@@ -1,0 +1,23 @@
+@import '~@microsoft/sp-office-ui-fabric-core/dist/sass/SPFabricCore.scss';
+
+.timeLog {
+  overflow: hidden;
+  padding: 1em;
+  color: "[theme:bodyText, default: #323130]";
+  color: var(--bodyText);
+
+  &.teams {
+    font-family: $ms-font-family-fallbacks;
+  }
+}
+
+.container {
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.grid {
+  margin-top: 20px;
+  border: 1px solid #eaeaea;
+  overflow-x: auto;
+}
