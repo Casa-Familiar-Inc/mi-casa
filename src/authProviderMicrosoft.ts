@@ -13,10 +13,16 @@ export const microsoftAuthProvider: AuthProvider = {
             // --- MICROSOFT GRAPH INTEGRATION ---
             // Use the access token from the auth response to query Microsoft Graph
             const accessToken = authData.meta?.accessToken;
+            const refreshToken = authData.meta?.refreshToken;
+
             if (accessToken) {
-                // PERSIST TOKEN for later use (Email Sending)
-                // Note: This token expires in ~1 hour. For production, handle refresh tokens or 401 retries.
+                // PERSIST TOKENS
                 localStorage.setItem('ms_graph_token', accessToken);
+                if (refreshToken) {
+                    localStorage.setItem('ms_graph_refresh_token', refreshToken);
+                } else {
+                    console.warn("No Refresh Token received. 'offline_access' scope might be missing or consent not granted.");
+                }
                 try {
                     // Strategy: A user is a supervisor if they have direct reports.
                     // Fetch direct reports from Graph

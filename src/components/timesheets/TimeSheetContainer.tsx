@@ -354,6 +354,16 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 };
             }
 
+            // VALIDATION: Comp Time
+            for (const ct of compTimeEntries) {
+                // If line has data (rationale or hours - assuming based on requirement "needs date if line added")
+                if (ct.rationale && !ct.date) {
+                    toast.error("Comp Time Error: Date is required when Rationale is provided.");
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
             // Save to DB
             const savedId = await TimeSheetService.saveTimeSheet({
                 header: headerData,
@@ -377,8 +387,6 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             // `const isSupervisorView = header ? (header.employee_email !== currentUserEmail) ...`
             // If headerData.employee_email is correct, isSupervisorView stays correct.
 
-            toast.success(`Timesheet ${status === 'Draft' ? 'Saved' : 'Submitted'} successfully`);
-            
             // Do NOT reload full timesheet if we can avoid it, as it might reset state or flicker?
             // "if (p) await loadTimeSheet..." lines 390 causes a reload.
             // It might serve to refresh data from server. 
@@ -397,17 +405,31 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             if (status === 'Submitted' && !isSupervisorView) {
                 // Employee Submitted. Notify Supervisor.
                 try {
-                    const manager = await getManagerProfile();
-                    console.log(manager);
-                    if (manager && manager.email) {
-                         await sendGraphEmail(
-                            manager.email,
+                    let managerEmail = '';
+                    try {
+                        const manager = await getManagerProfile();
+                        if (manager && manager.email) managerEmail = manager.email;
+                    } catch (err) { console.warn("Graph Manager Fetch Failed", err); }
+
+                    // Fallback to PB Record if Graph fails
+                    if (!managerEmail) {
+                        const userRecord = pb.authStore.record;
+                        if (userRecord && (userRecord as any).manager_email) {
+                            managerEmail = (userRecord as any).manager_email;
+                        }
+                    }
+
+                    if (managerEmail) {
+                         const sent = await sendGraphEmail(
+                            managerEmail,
                             `Timesheet Submitted: ${user}`,
                             `<p>${user} has submitted a timesheet for ${p?.start} - ${p?.end}.</p><p>Please review and approve.</p>`
                         );
-                        toast.success(`Notification sent to supervisor: ${manager.name}`);
+                        if (sent) toast.success(`Notification sent to supervisor: ${managerEmail}`);
+                        else toast.warning("Timesheet submitted, but failed to send email (Token Expired?)");
                     } else {
                         console.warn("Could not find manager to notify.");
+                        toast.warning("Timesheet submitted, but no supervisor email found to notify.");
                     }
                 } catch (err) {
                     console.error("Failed to notify supervisor", err);
@@ -485,11 +507,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             
             // Notify Employee
             if (header.employee_email) {
-                await sendGraphEmail(
+                const sent = await sendGraphEmail(
                     header.employee_email,
                     "Timesheet Approved",
                     `<p>Your timesheet for ${header.period_start} - ${header.period_end} has been <strong>APPROVED</strong> by ${currentUserName || 'Supervisor'}.</p>`
                 );
+                 if (!sent) toast.warning("Approved, but failed to send email notification.");
             }
 
             toast.success("Timesheet Approved");
@@ -505,11 +528,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             
             // Notify Employee
             if (header.employee_email) {
-                await sendGraphEmail(
+                const sent = await sendGraphEmail(
                     header.employee_email,
                     "Timesheet Rejected",
                     `<p>Your timesheet for ${header.period_start} - ${header.period_end} has been <strong>REJECTED</strong>.</p><p>Reason: ${rejectReason}</p><p>Please correct and resubmit.</p>`
                 );
+                if (!sent) toast.warning("Rejected, but failed to send email notification.");
             }
 
             toast.success("Timesheet Returned to Draft");
