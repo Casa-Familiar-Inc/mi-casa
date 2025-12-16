@@ -149,10 +149,8 @@ export const microsoftAuthProvider: AuthProvider = {
             const jobTitle = record.job_title || '';
             const directReports = record.direct_reports || [];
 
-            // Supervisor logic: Has direct reports OR has "Supervisor"/"Manager" in title
-            const isSupervisor = directReports.length > 0 ||
-                jobTitle.toLowerCase().includes('supervisor') ||
-                jobTitle.toLowerCase().includes('manager');
+            // Supervisor logic: Based on 'is_supervisor' flag as requested
+            const isSupervisor = !!record.is_supervisor;
 
             return {
                 jobTitle,

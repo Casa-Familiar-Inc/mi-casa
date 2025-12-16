@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
-import { useGetIdentity } from '@refinedev/core';
+import { useGetIdentity, usePermissions } from '@refinedev/core';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useGo } from '@refinedev/core';
@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea';
 
 export const SupervisorDashboard: React.FC = () => {
     const { data: identity } = useGetIdentity<{ name: string }>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: permissions, isLoading: isLoadingPermissions } = usePermissions<any>({});
     const go = useGo();
     const [pending, setPending] = useState<HR_TimeSheetHeader[]>([]);
     const [history, setHistory] = useState<HR_TimeSheetHeader[]>([]);
@@ -29,8 +31,20 @@ export const SupervisorDashboard: React.FC = () => {
     const [rejectReason, setRejectReason] = useState('');
 
     useEffect(() => {
-        loadSubmissions();
-    }, []);
+        if (!isLoadingPermissions) {
+            // Check based on the unified logic (which effectively checks table field is_supervisor)
+            // Or access identity if we had the raw record, but permissions object is safer if getPermissions is aligned.
+            // Let's rely on getPermissions being updated, OR simply check the hook result.
+            // But wait, getPermissions in authProvider might still be doing the old logic.
+            // Let's update authProvider first to be safe, but here we can just check:
+            if (!permissions?.isSupervisor) {
+                 toast.error("Unauthorized: Supervisor access required.");
+                 go({ to: '/', type: 'push' });
+                 return;
+            }
+            loadSubmissions();
+        }
+    }, [isLoadingPermissions, permissions]);
 
     const loadSubmissions = async () => {
         setIsLoading(true);

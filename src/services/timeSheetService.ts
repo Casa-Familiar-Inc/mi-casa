@@ -156,7 +156,8 @@ export const TimeSheetService = {
     async getTimeSheetById(id: string): Promise<TimeSheetFull | null> {
         try {
             const header = await pb.collection('HR_TimeSheetHeaders').getOne<HR_TimeSheetHeader>(id, {
-                expand: 'HR_TimeSheetLogs(header),HR_CompTimeEntries(header)'
+                expand: 'HR_TimeSheetLogs(header),HR_CompTimeEntries(header)',
+                requestKey: null // Disable auto-cancellation
             });
 
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

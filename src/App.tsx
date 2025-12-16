@@ -27,13 +27,76 @@ import { Login } from "./pages/login";
 import { TimeSheetPage } from "./pages/timesheets";
 import { TimeSheetList } from "./pages/timesheets/list";
 import { SupervisorDashboard } from "./components/timesheets/SupervisorDashboard";
+import { useState, useEffect } from "react";
 import pb from "./pocketbase";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 
 function App() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [isSupervisor, setIsSupervisor] = useState(!!(pb.authStore.record as any)?.is_supervisor);
+
+  useEffect(() => {
+    return pb.authStore.onChange((token, model) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setIsSupervisor(!!(model as any)?.is_supervisor);
+    });
+  }, []);
+
+  const resources = [
+    {
+       name: "dashboard",
+       list: "/",
+       meta: {
+           label: "Dashboard",
+       }
+    },
+    {
+      name: "IT_Category",
+      list: "/it-category",
+      create: "/it-category/create",
+      edit: "/it-category/edit/:id",
+      show: "/it-category/show/:id",
+      meta: {
+        label: "Categories",
+      },
+    },
+    {
+      name: "IT_Manufacturer",
+      list: "/it-manufacturer",
+      create: "/it-manufacturer/create",
+      edit: "/it-manufacturer/edit/:id",
+      show: "/it-manufacturer/show/:id",
+      meta: {
+        label: "Manufacturers",
+      },
+    },
+    {
+        name: "HR",
+        meta: {
+            label: "HR"
+        }
+    },
+    {
+      name: "TimeSheets",
+      list: "/timesheets",
+      create: "/timesheets/entry",
+      meta: {
+        label: "My TimeSheet",
+        parent: "HR"
+      },
+    },
+    ...(isSupervisor ? [{
+      name: "Supervisor",
+      list: "/supervisor",
+      meta: {
+          label: "Supervisor Dashboard",
+          parent: "HR"
+      }
+    }] : [])
+  ];
+
   return (
-    <BrowserRouter>
-      {/* <GitHubBanner /> */}
+    <BrowserRouter> 
       <RefineKbarProvider>
         <ThemeProvider>
           <DevtoolsProvider>
@@ -43,58 +106,18 @@ function App() {
               authProvider={combinedAuthProvider}
               notificationProvider={useNotificationProvider()}
               routerProvider={routerProvider}
-              resources={[
-                {
-                   name: "dashboard",
-                   list: "/",
-                   meta: {
-                       label: "Dashboard",
-                   }
-                },
-                {
-                  name: "IT_Category",
-                  list: "/it-category",
-                  create: "/it-category/create",
-                  edit: "/it-category/edit/:id",
-                  show: "/it-category/show/:id",
-                  meta: {
-                    label: "Categories",
-                  },
-                },
-                {
-                  name: "IT_Manufacturer",
-                  list: "/it-manufacturer",
-                  create: "/it-manufacturer/create",
-                  edit: "/it-manufacturer/edit/:id",
-                  show: "/it-manufacturer/show/:id",
-                  meta: {
-                    label: "Manufacturers",
-                  },
-                },
-                {
-                    name: "HR",
-                    meta: {
-                        label: "HR"
-                    }
-                },
-                {
-                  name: "TimeSheets",
-                  list: "/timesheets",
-                  create: "/timesheets/entry",
-                  meta: {
-                    label: "My TimeSheet",
-                    parent: "HR"
-                  },
-                },
-                {
-                    name: "Supervisor",
-                    list: "/supervisor",
-                    meta: {
-                        label: "Supervisor Dashboard",
-                        parent: "HR"
-                    }
-                },
-              ]}
+              resources={resources}
+              accessControlProvider={{
+                can: async ({ resource }) => {
+                   // Fallback security, though resource won't exist in menu if hidden
+                  if (resource === "Supervisor") {
+                    const user = pb.authStore.record;
+                    const isSup = (user as any)?.is_supervisor || false;
+                    return { can: isSup };
+                  }
+                  return { can: true };
+                }
+              }}
               options={{
                 syncWithLocation: true,
                 warnWhenUnsavedChanges: true,
