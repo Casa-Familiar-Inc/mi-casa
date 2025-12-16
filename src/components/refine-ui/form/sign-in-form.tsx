@@ -54,158 +54,45 @@ export const SignInForm = () => {
         "justify-center",
         "px-6",
         "py-8",
-        "min-h-svh"
+        "min-h-svh",
+        "bg-muted/40"
       )}
     >
-      <div className={cn("flex", "items-center", "justify-center")}>
-        {title.icon && (
-          <div
-            className={cn("text-foreground", "[&>svg]:w-12", "[&>svg]:h-12")}
-          >
-            {title.icon}
-          </div>
-        )}
+      <div className="mb-8">
+          {/* Logo could go here if available */}
+          <h1 className="text-2xl font-bold text-center">Casa Familiar HR</h1>
       </div>
 
-      <Card className={cn("sm:w-[456px]", "p-12", "mt-6")}>
-        <CardHeader className={cn("px-0")}>
-          <CardTitle
-            className={cn(
-              "text-blue-600",
-              "dark:text-blue-400",
-              "text-3xl",
-              "font-semibold"
-            )}
-          >
-            Sign in
-          </CardTitle>
-          <CardDescription
-            className={cn("text-muted-foreground", "font-medium")}
-          >
-            Welcome back
+      <Card className={cn("sm:w-[400px]", "p-8")}>
+        <CardHeader className={cn("px-0 items-center")}>
+          <CardTitle className="text-xl">Authentication Required</CardTitle>
+          <CardDescription>
+            Please sign in with your corporate account.
           </CardDescription>
         </CardHeader>
 
-        <Separator />
-
-        <CardContent className={cn("px-0")}>
-          <form onSubmit={handleSignIn}>
-            <div className={cn("flex", "flex-col", "gap-2")}>
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder=""
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div
-              className={cn("relative", "flex", "flex-col", "gap-2", "mt-6")}
+        <CardContent className="px-0 py-6">
+            <Button
+              size="lg"
+              className={cn("flex", "items-center", "gap-3", "w-full")}
+              onClick={handleSignInWithMicrosoft}
+              type="button"
             >
-              <Label htmlFor="password">Password</Label>
-              <InputPassword
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-
-            <div
-              className={cn(
-                "flex items-center justify-between",
-                "flex-wrap",
-                "gap-2",
-                "mt-4"
-              )}
-            >
-              <div className={cn("flex items-center", "space-x-2")}>
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) =>
-                    setRememberMe(checked === "indeterminate" ? false : checked)
-                  }
-                />
-                <Label htmlFor="remember">Remember me</Label>
-              </div>
-              <Link
-                to="/forgot-password"
-                className={cn(
-                  "text-sm",
-                  "flex",
-                  "items-center",
-                  "gap-2",
-                  "text-primary hover:underline",
-                  "text-blue-600",
-                  "dark:text-blue-400"
-                )}
+              <svg
+                width="21"
+                height="20"
+                viewBox="0 0 21 20"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
               >
-                <span>Forgot password</span>
-                <CircleHelp className={cn("w-4", "h-4")} />
-              </Link>
-            </div>
-
-            <Button type="submit" size="lg" className={cn("w-full", "mt-6")}>
-              Sign in
+                <rect x="1" y="1" width="9" height="9" fill="#F35325" />
+                <rect x="11" y="1" width="9" height="9" fill="#81BC06" />
+                <rect x="1" y="11" width="9" height="9" fill="#05A6F0" />
+                <rect x="11" y="11" width="9" height="9" fill="#FFBA08" />
+              </svg>
+              <span>Sign in with Microsoft</span>
             </Button>
-
-            <div className={cn("flex", "items-center", "gap-4", "mt-6")}>
-              <Separator className={cn("flex-1")} />
-              <span className={cn("text-sm", "text-muted-foreground")}>or</span>
-              <Separator className={cn("flex-1")} />
-            </div>
-
-            <div className={cn("flex", "flex-col", "gap-4", "mt-6")}>
-              <p className={cn("text-sm", "font-medium")}>Sign in using</p>
-              <div className={cn("grid grid-cols-1", "gap-6")}>
-                {/* Microsoft */}
-                <Button
-                  variant="outline"
-                  className={cn("flex", "items-center", "gap-2", "w-full")}
-                  onClick={handleSignInWithMicrosoft}
-                  type="button"
-                >
-                  <svg
-                    width="21"
-                    height="20"
-                    viewBox="0 0 21 20"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <rect x="1" y="1" width="9" height="9" fill="#F35325" />
-                    <rect x="11" y="1" width="9" height="9" fill="#81BC06" />
-                    <rect x="1" y="11" width="9" height="9" fill="#05A6F0" />
-                    <rect x="11" y="11" width="9" height="9" fill="#FFBA08" />
-                  </svg>
-                  <div>Microsoft</div>
-                </Button>
-              </div>
-            </div>
-          </form>
         </CardContent>
-
-        <Separator />
-
-        <CardFooter>
-          <div className={cn("w-full", "text-center text-sm")}>
-            <span className={cn("text-sm", "text-muted-foreground")}>
-              No account?{" "}
-            </span>
-            <Link
-              to="/register"
-              className={cn(
-                "text-green-600",
-                "dark:text-green-400",
-                "font-semibold",
-                "underline"
-              )}
-            >
-              Sign up
-            </Link>
-          </div>
-        </CardFooter>
       </Card>
     </div>
   );
