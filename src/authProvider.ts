@@ -27,7 +27,8 @@ export const adminAuthProvider: AuthProvider = {
         };
     },
     check: async () => {
-        if (pb.authStore.isValid && pb.authStore.isAdmin) {
+        // Updated to use isSuperuser instead of deprecated isAdmin
+        if (pb.authStore.isValid && pb.authStore.isSuperuser) {
             return {
                 authenticated: true,
             };
@@ -43,11 +44,12 @@ export const adminAuthProvider: AuthProvider = {
         return ["admin"];
     },
     getIdentity: async () => {
-        const model = pb.authStore.model;
+        // Updated deprecated .model property to .record
+        const record = pb.authStore.record;
         return {
-            id: model?.id,
-            name: model?.email,
-            avatar: model?.avatar,
+            id: record?.id,
+            name: (record as any)?.email,
+            avatar: (record as any)?.avatar,
         };
     },
     onError: async (error) => {

@@ -21,7 +21,7 @@ export const ITCategoryShow = () => {
                 <Button variant="outline" onClick={() => go({ to: "/it-category" })}>
                     Back to List
                 </Button>
-                <Button onClick={() => go({ to: { resource: "IT_Category", action: "edit", id: record?.id } })}>
+                <Button onClick={() => go({ to: `/it-category/edit/${record?.id}` })}>
                     Edit
                 </Button>
             </div>

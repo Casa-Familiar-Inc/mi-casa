@@ -24,13 +24,15 @@ import { ITCategoryShow } from "./pages/it-category/show";
 import { ITManufacturerList } from "./pages/it-manufacturer/list";
 import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/login";
+import { TimeSheetPage } from "./pages/timesheets";
+import { SupervisorDashboard } from "./components/timesheets/SupervisorDashboard";
 import pb from "./pocketbase";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 
 function App() {
   return (
     <BrowserRouter>
-      <GitHubBanner />
+      {/* <GitHubBanner /> */}
       <RefineKbarProvider>
         <ThemeProvider>
           <DevtoolsProvider>
@@ -68,6 +70,13 @@ function App() {
                     label: "Manufacturers",
                   },
                 },
+                {
+                  name: "TimeSheets",
+                  list: "/timesheets",
+                  meta: {
+                    label: "My TimeSheet",
+                  },
+                },
               ]}
               options={{
                 syncWithLocation: true,
@@ -100,6 +109,9 @@ function App() {
                   <Route path="/it-manufacturer">
                       <Route index element={<ITManufacturerList />} />
                   </Route>
+                  <Route path="/timesheets" element={<TimeSheetPage />} />
+                  <Route path="/timesheets/review/:email" element={<TimeSheetPage />} />
+                  <Route path="/supervisor" element={<SupervisorDashboard />} />
                 </Route>
                 <Route
                   element={
