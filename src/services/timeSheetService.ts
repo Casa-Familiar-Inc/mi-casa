@@ -15,89 +15,109 @@ export const TimeSheetService = {
         data: TimeSheetFull,
         userEmail: string
     ): Promise<string> {
-        // 1. Create or Update Header
+        // --- ATOMIC BATCH OPERATION ---
+        const batch = pb.createBatch();
+
+        // 1. Prepare Header ID
         let headerId = data.header.id;
         let isNew = false;
         let oldStatus = '';
 
-        try {
-            if (headerId) {
-                // Fetch old header to check status change (optional, but good for audit)
-                try {
-                    const old = await pb.collection('HR_TimeSheetHeaders').getOne(headerId);
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    oldStatus = (old as any).status;
-                } catch (e) { /* ignore */ }
+        if (headerId) {
+            // Fetch old header to check status change (for Audit)
+            // We do this OUTSIDE the batch because it's a read.
+            try {
+                const old = await pb.collection('HR_TimeSheetHeaders').getOne(headerId);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                oldStatus = (old as any).status;
+            } catch (e) { /* ignore */ }
 
-                await pb.collection('HR_TimeSheetHeaders').update(headerId, {
-                    ...data.header,
-                    // employee_email: userEmail // REMOVED: Do not overwrite email on update (prevents supervisor stealing)
-                });
-            } else {
-                isNew = true;
-                const created = await pb.collection('HR_TimeSheetHeaders').create({
-                    ...data.header,
-                    employee_email: userEmail
-                });
-                headerId = created.id;
+            // Update Header in Batch
+            batch.collection('HR_TimeSheetHeaders').update(headerId, {
+                ...data.header,
+                // employee_email: userEmail // Keep existing email
+            });
+
+        } else {
+            isNew = true;
+            // Generate Client-Side ID (15 chars alphanumeric) for Atomicity
+            // PocketBase IDs: 15 chars, [a-z0-9]
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            headerId = '';
+            for (let i = 0; i < 15; i++) {
+                headerId += chars.charAt(Math.floor(Math.random() * chars.length));
             }
 
-            // AUDIT LOG
-            const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
-            await AuditService.log({
-                target_collection: 'HR_TimeSheetHeaders',
-                target_id: headerId,
-                action_type: action,
-                details: { status: data.header.status, user_email: userEmail }
+            // Create Header in Batch with explicit ID
+            batch.collection('HR_TimeSheetHeaders').create({
+                ...data.header,
+                id: headerId, // EXPLICIT ID
+                employee_email: userEmail
             });
+        }
 
+        // 2. Manage Logs (Delete old, Create new)
+        // Read existing logs to know what to delete (Read before Write)
+        const existingLogs = await pb.collection('HR_TimeSheetLogs').getFullList({
+            filter: `header = "${headerId}"`,
+            requestKey: null // Safety
+        }).catch(() => []);
+        // Note: New header won't have existing logs, so empty list is fine.
 
-            // 2. Manage Logs (Delete old, Create new)
-            // Strategy: Fetch existing logs for this header and delete them, then bulk create new ones.
-            // Note: PocketBase doesn't have a native "Delete Many" by filter in SDK yet (needs loops or batch if supported).
-            // efficient way: get list, loop delete.
-            const existingLogs = await pb.collection('HR_TimeSheetLogs').getFullList({
-                filter: `header = "${headerId}"`
+        // Queue Deletes
+        existingLogs.forEach(log => {
+            batch.collection('HR_TimeSheetLogs').delete(log.id);
+        });
+
+        // Queue Creates
+        data.logs.forEach(log => {
+            batch.collection('HR_TimeSheetLogs').create({
+                ...log,
+                header: headerId
             });
+        });
 
-            // Delete in parallel
-            await Promise.all(existingLogs.map(log =>
-                pb.collection('HR_TimeSheetLogs').delete(log.id)
-            ));
+        // 3. Manage Comp Time (Delete old, Create new)
+        const existingComp = await pb.collection('HR_CompTimeEntries').getFullList({
+            filter: `header = "${headerId}"`,
+            requestKey: null
+        }).catch(() => []);
 
-            // Create new logs
-            // We do this serially to allow for any errors to stop the process or could be parallel
-            for (const log of data.logs) {
-                await pb.collection('HR_TimeSheetLogs').create({
-                    ...log,
-                    header: headerId
-                });
-            }
+        // Queue Deletes
+        existingComp.forEach(comp => {
+            batch.collection('HR_CompTimeEntries').delete(comp.id);
+        });
 
-            // 3. Manage Comp Time (Delete old, Create new)
-            const existingComp = await pb.collection('HR_CompTimeEntries').getFullList({
-                filter: `header = "${headerId}"`
-            });
-
-            await Promise.all(existingComp.map(comp =>
-                pb.collection('HR_CompTimeEntries').delete(comp.id)
-            ));
-
-            for (const comp of data.compTime) {
-                // Filter out empty entries
-                if (!comp.date && !comp.rationale) continue;
-
-                await pb.collection('HR_CompTimeEntries').create({
+        // Queue Creates
+        data.compTime.forEach(comp => {
+            if (comp.date || comp.rationale) {
+                batch.collection('HR_CompTimeEntries').create({
                     ...comp,
                     header: headerId
                 });
             }
+        });
+
+        try {
+            // EXECUTE BATCH
+            await batch.send();
+
+            // AUDIT LOG (Only if batch succeeds)
+            const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
+
+            // We run audit log separately. If audit fails, main data is still safe.
+            AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: headerId,
+                action_type: action,
+                details: { status: data.header.status, user_email: userEmail }
+            }).catch(console.error);
 
             return headerId;
 
         } catch (error) {
-            console.error("Error saving timesheet:", error);
-            throw error;
+            console.error("Error saving timesheet (Batch Failed):", error);
+            throw error; // Propagate error to UI so user knows save failed
         }
     },
 

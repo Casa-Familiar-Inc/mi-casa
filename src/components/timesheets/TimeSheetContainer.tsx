@@ -545,16 +545,18 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     };
     
     // UI Helpers
-    const showTimePicker = (e: React.FocusEvent<HTMLInputElement>) => {
-        try {
-            if (e.currentTarget.showPicker) {
-                e.currentTarget.showPicker();
-            }
-        } catch (error) {
-            // Fails silently if browser blocks it (e.g. non-user-triggered focus)
-            console.debug("Picker open suppressed", error);
+const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if ((e.currentTarget as any).showPicker) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (e.currentTarget as any).showPicker();
         }
-    };
+    } catch (error) {
+        // Fails silently if browser blocks it (e.g. non-user-triggered focus)
+        console.debug("Picker open suppressed", error);
+    }
+};
 
     // --- CALCULATIONS ---
     const calculateColumnTotal = (field: keyof HR_TimeSheetLog) => {
@@ -605,7 +607,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             <Input
                                 id="time_in"
                                 type="time"
-                                onFocus={showTimePicker}
+                                onClick={showTimePicker}
                                 value={tempSettings.default_time_in}
                                 onChange={(e) => setTempSettings({...tempSettings, default_time_in: e.target.value})}
                                 className="col-span-3"
@@ -618,7 +620,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             <Input
                                 id="lunch_out"
                                 type="time"
-                                onFocus={showTimePicker}
+                                onClick={showTimePicker}
                                 value={tempSettings.default_lunch_out}
                                 onChange={(e) => setTempSettings({...tempSettings, default_lunch_out: e.target.value})}
                                 className="col-span-3"
@@ -631,7 +633,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             <Input
                                 id="lunch_in"
                                 type="time"
-                                onFocus={showTimePicker}
+                                onClick={showTimePicker}
                                 value={tempSettings.default_lunch_in}
                                 onChange={(e) => setTempSettings({...tempSettings, default_lunch_in: e.target.value})}
                                 className="col-span-3"
@@ -644,7 +646,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             <Input
                                 id="time_out"
                                 type="time"
-                                onFocus={showTimePicker}
+                                onClick={showTimePicker}
                                 value={tempSettings.default_time_out}
                                 onChange={(e) => setTempSettings({...tempSettings, default_time_out: e.target.value})}
                                 className="col-span-3"
