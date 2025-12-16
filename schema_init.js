@@ -168,6 +168,25 @@ async function main() {
             ]
         });
 
+        // 5. Audit Logs
+        await createCollection({
+            name: 'HR_AuditLogs',
+            type: 'base',
+            listRule: '@request.auth.id != ""', // Visible to authenticated users (or restrict to Admins/Supervisors later)
+            viewRule: '@request.auth.id != ""',
+            createRule: '@request.auth.id != ""', // Services/Users create logs
+            updateRule: null, // Logs should be immutable
+            deleteRule: null, // Logs should be immutable
+            fields: [
+                { name: 'target_collection', type: 'text', required: true },
+                { name: 'target_id', type: 'text', required: true },
+                { name: 'actor_id', type: 'text' },
+                { name: 'actor_name', type: 'text' },
+                { name: 'action_type', type: 'text', required: true }, // CREATE, UPDATE, STATUS_CHANGE, etc.
+                { name: 'details', type: 'json' } // Store diffs or comments
+            ]
+        });
+
     } catch (e) {
         console.error("Script failed:", e);
     }

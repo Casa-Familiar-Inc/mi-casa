@@ -7,6 +7,8 @@ import {
     TimeSheetFull
 } from "../types/timesheet";
 
+import { AuditService } from "./AuditService";
+
 export const TimeSheetService = {
 
     async saveTimeSheet(
@@ -15,19 +17,40 @@ export const TimeSheetService = {
     ): Promise<string> {
         // 1. Create or Update Header
         let headerId = data.header.id;
+        let isNew = false;
+        let oldStatus = '';
+
         try {
             if (headerId) {
+                // Fetch old header to check status change (optional, but good for audit)
+                try {
+                    const old = await pb.collection('HR_TimeSheetHeaders').getOne(headerId);
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    oldStatus = (old as any).status;
+                } catch (e) { /* ignore */ }
+
                 await pb.collection('HR_TimeSheetHeaders').update(headerId, {
                     ...data.header,
                     // employee_email: userEmail // REMOVED: Do not overwrite email on update (prevents supervisor stealing)
                 });
             } else {
+                isNew = true;
                 const created = await pb.collection('HR_TimeSheetHeaders').create({
                     ...data.header,
                     employee_email: userEmail
                 });
                 headerId = created.id;
             }
+
+            // AUDIT LOG
+            const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
+            await AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: headerId,
+                action_type: action,
+                details: { status: data.header.status, user_email: userEmail }
+            });
+
 
             // 2. Manage Logs (Delete old, Create new)
             // Strategy: Fetch existing logs for this header and delete them, then bulk create new ones.
@@ -146,6 +169,15 @@ export const TimeSheetService = {
                 supervisor_signed_by: '',
                 supervisor_signed_date: ''
             });
+
+            // AUDIT
+            await AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: header.id,
+                action_type: 'CREATE_DRAFT',
+                details: { period: start }
+            });
+
             return header.id;
         } catch (error) {
             console.error("Error ensuring timesheet:", error);
@@ -259,6 +291,15 @@ export const TimeSheetService = {
                 supervisor_signed_by: supervisorName,
                 supervisor_signed_date: new Date().toLocaleString()
             });
+
+            // AUDIT
+            await AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: headerId,
+                action_type: 'APPROVE',
+                details: { supervisor: supervisorName }
+            });
+
         } catch (error) {
             console.error("Error approving timesheet:", error);
             throw error;
@@ -273,6 +314,15 @@ export const TimeSheetService = {
                 employee_signed_by: '',
                 employee_signed_date: ''
             });
+
+            // AUDIT
+            await AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: headerId,
+                action_type: 'REJECT',
+                details: { reason }
+            });
+
         } catch (error) {
             console.error("Error rejecting timesheet:", error);
             throw error;
