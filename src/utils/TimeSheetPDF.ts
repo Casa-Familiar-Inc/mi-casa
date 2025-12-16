@@ -3,109 +3,209 @@ import autoTable from 'jspdf-autotable';
 import { HR_TimeSheetHeader, HR_TimeSheetLog } from '../types/timesheet';
 
 export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSheetLog[]) => {
-    const doc = new jsPDF({ orientation: 'landscape' });
+    const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.width;
 
-    // --- TITLE ---
-    doc.setFontSize(18);
-    doc.text("Employee Time Sheet", 14, 15);
+    // --- HEADER ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("CASA FAMILIAR", pageWidth / 2, 15, { align: 'center' });
+    doc.text("EMPLOYEE TIME SHEET", pageWidth / 2, 20, { align: 'center' });
 
-    // --- HEADER INFO ---
+    // Period Logic: try to infer "11/16/2025 - 11/30/2025" from header or logs
+    // Assuming header.period_start is YYYY-MM-DD
+    const formatDate = (d: string) => {
+        if (!d) return '';
+        const [y, m, day] = d.split('-');
+        return `${m}/${day}/${y}`;
+    };
+    doc.text(`FOR THE PERIOD ${formatDate(header.period_start)} - ${formatDate(header.period_end)}`, pageWidth / 2, 25, { align: 'center' });
+
+    // Name Line
     doc.setFontSize(11);
-    doc.text(`Employee: ${header.employee_name}`, 14, 25);
-    doc.text(`Period: ${header.period_start} to ${header.period_end}`, 14, 30);
-    doc.text(`Status: ${header.status}`, 200, 25);
-    doc.text(`Total Hours: ${header.total_hours.toFixed(2)}`, 200, 30);
+    doc.text("Employee Name:", 40, 40);
+    doc.setFontSize(12);
+    doc.text(header.employee_name || "______________________", 80, 40);
+    doc.setLineWidth(0.5);
+    doc.line(80, 41, 170, 41); // Underline
 
     // --- TABLE ---
-    // Define columns
     const columns = [
-        { header: 'Date', dataKey: 'date' },
-        { header: 'Day', dataKey: 'day_name' },
-        { header: 'Time In', dataKey: 'time_in' },
-        { header: 'L.Out', dataKey: 'lunch_out' },
-        { header: 'L.In', dataKey: 'lunch_in' },
-        { header: 'Time Out', dataKey: 'time_out' },
+        { header: 'DATE', dataKey: 'date_day' },
+        { header: 'DAY', dataKey: 'day_name' },
+        { header: 'IN', dataKey: 'time_in' },
+        { header: 'OUT', dataKey: 'lunch_out' },
+        { header: 'IN', dataKey: 'lunch_in' },
+        { header: 'OUT', dataKey: 'time_out' },
         { header: 'REG', dataKey: 'reg_hours' },
         { header: 'WD', dataKey: 'wd_hours' },
         { header: 'VAC', dataKey: 'vac_hours' },
         { header: 'HOL', dataKey: 'hol_hours' },
         { header: 'SICK', dataKey: 'sick_hours' },
-        // { header: 'BER', dataKey: 'bereav_hours' },
-        // { header: 'OT', dataKey: 'ot_hours' },
-        // { header: 'JURY', dataKey: 'jury_duty_hours' },
-        // { header: 'UNPD', dataKey: 'unpaid_hours' },
-        { header: 'Total', dataKey: 'daily_total' },
+        { header: 'Bereav', dataKey: 'bereav_hours' },
+        { header: 'OT', dataKey: 'ot_hours' },
+        { header: 'Jury Duty', dataKey: 'jury_duty_hours' },
+        { header: 'Unpaid', dataKey: 'unpaid_hours' },
     ];
 
-    // Map data
-    const tableData = logs.map(log => ({
-        ...log,
-        reg_hours: Number(log.reg_hours || 0).toFixed(2),
-        daily_total: Number(log.daily_total || 0).toFixed(2)
-    }));
+    const tableData = logs.map(log => {
+        // Parse date for "11   16" format if possible, or just MM/DD
+        const d = log.date.split('-'); // YYYY-MM-DD
+        return [
+            d.length === 3 ? `${d[1]}/${d[2]}` : log.date, // Date
+            log.day_name.toUpperCase(),
+            log.time_in,
+            log.lunch_out,
+            log.lunch_in,
+            log.time_out,
+            log.reg_hours,
+            log.wd_hours || '',
+            log.vac_hours || '',
+            log.hol_hours || '',
+            log.sick_hours || '',
+            log.bereav_hours || '',
+            log.ot_hours || '',
+            log.jury_duty_hours || '',
+            log.unpaid_hours || ''
+        ];
+    });
+
+    // Calculate Subtotals
+    const calculateSum = (key: keyof HR_TimeSheetLog) =>
+        logs.reduce((sum, log) => sum + Number(log[key] || 0), 0);
+
+    const subtotals = [
+        '', // Date
+        'SUBTOTALS--->', // Day
+        '', '', '', '', // Times
+        calculateSum('reg_hours').toString(),
+        calculateSum('wd_hours') || '',
+        calculateSum('vac_hours') || '',
+        calculateSum('hol_hours') || '',
+        calculateSum('sick_hours') || '',
+        calculateSum('bereav_hours') || '',
+        calculateSum('ot_hours') || '',
+        calculateSum('jury_duty_hours') || '',
+        calculateSum('unpaid_hours') || '',
+    ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     autoTable(doc, {
-        startY: 35,
-        head: [columns.map(c => c.header)],
-        // body: tableData.map(r => columns.map(c => r[c.dataKey])), // If simplified
-        body: tableData.map(row => [
-            row.date,
-            row.day_name,
-            row.time_in,
-            row.lunch_out,
-            row.lunch_in,
-            row.time_out,
-            row.reg_hours,
-            row.wd_hours || '',
-            row.vac_hours || '',
-            row.hol_hours || '',
-            row.sick_hours || '',
-            row.daily_total
-        ]),
-        theme: 'grid',
-        headStyles: { fillColor: [41, 128, 185], fontSize: 9 },
-        bodyStyles: { fontSize: 8, cellPadding: 1 },
+        startY: 50,
+        head: [
+            [
+                { content: 'DATE', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                { content: 'DAY', rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+                { content: 'TIME', colSpan: 2, styles: { halign: 'center' } },
+                { content: 'LUNCH', colSpan: 2, styles: { halign: 'center' } }, // Based on image headers seem grouped: TIME (IN/OUT/IN/OUT)? Image shows TIME [IN OUT IN OUT] actually column grouping is tricky. 
+                // Image: [DATE] [DAY] [TIME [IN] [OUT] [IN] [OUT] ] ? No, typical timesheet is IN, L.OUT, L.IN, OUT.
+                // Image Header: | TIME | LUNCH | TIME | -> IN | OUT | IN | OUT ? 
+                // Let's stick to standard: IN | OUT | IN | OUT. 
+                // Use simplified header for now:
+                // [DATE, DAY, IN, OUT, IN, OUT, HOURS TO BE PAID (colspan 9)]
+                { content: 'HOURS TO BE PAID', colSpan: 9, styles: { halign: 'center' } }
+            ],
+            [
+                'IN', 'OUT', 'IN', 'OUT',
+                'REG', 'WD', 'VAC', 'HOL', 'SICK', 'Bereav', 'OT', 'Jury Duty', 'Unpaid'
+            ]
+        ],
+        body: [...tableData, subtotals],
+        theme: 'plain', // We'll draw lines manually if needed or grid
+        styles: {
+            fontSize: 7,
+            cellPadding: 1,
+            lineColor: [0, 0, 0],
+            lineWidth: 0.1,
+            valign: 'middle',
+            halign: 'center'
+        },
+        headStyles: {
+            fillColor: [255, 255, 255],
+            textColor: [0, 0, 0],
+            lineWidth: 0.2, // Bold border
+            fontStyle: 'bold'
+        },
+        footStyles: {
+            fontStyle: 'bold'
+        },
         columnStyles: {
-            0: { cellWidth: 22 }, // Date
+            0: { cellWidth: 12 }, // Date
             1: { cellWidth: 20 }, // Day
             // Times
-            2: { cellWidth: 15 },
-            3: { cellWidth: 15 },
-            4: { cellWidth: 15 },
-            5: { cellWidth: 15 },
-        }
+            2: { cellWidth: 12 },
+            3: { cellWidth: 12 },
+            4: { cellWidth: 12 },
+            5: { cellWidth: 12 },
+        },
+        tableLineColor: [0, 0, 0],
+        tableLineWidth: 0.1,
     });
 
-    const finalY = (doc as any).lastAutoTable.finalY + 20;
+    const finalY = (doc as any).lastAutoTable.finalY;
 
-    // --- SIGNATURES ---
+    // --- FOOTER SECTION ---
+
+    // HOURS THIS PERIOD BOX
+    // Location: Below table, Left aligned
+    const boxY = finalY;
+
+    // Box 1: "HOURS THIS PERIOD" Label + Total
     doc.setLineWidth(0.5);
+    doc.rect(14, boxY, 40, 20); // Outer Box
 
-    // Employee
-    doc.line(14, finalY, 100, finalY); // Line
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text("HOURS THIS PERIOD", 34, boxY + 5, { align: 'center' });
+
+    doc.setFontSize(16);
+    doc.text(header.total_hours.toFixed(0), 34, boxY + 15, { align: 'center' });
+
+
+    // COMPENSATORY TIME RATIONALE
+    // Location: Right side
+    const compX = 110;
+    const compWidth = 90;
+    const compHeight = 60;
+
+    doc.rect(compX, boxY, compWidth, compHeight);
+
+    doc.setFontSize(8);
+    doc.text("COMPENSATORY TIME RATIONALE:", compX + 2, boxY + 5);
+    doc.text("DATE:           PURPOSE:", compX + 2, boxY + 10);
+
+    // Draw lines for writing
+    for (let i = 0; i < 5; i++) {
+        const lineY = boxY + 20 + (i * 8);
+        doc.line(compX + 2, lineY, compX + 25, lineY); // Date line
+        doc.line(compX + 30, lineY, compX + compWidth - 2, lineY); // Purpose line
+    }
+
+
+    // SIGNATURES
+    // Bottom Left area
+    const sigY = boxY + 40;
+
     doc.setFontSize(10);
-    doc.text("Employee Signature", 14, finalY + 5);
-
+    doc.text(header.employee_name || '', 20, sigY - 2);
+    doc.line(20, sigY, 90, sigY);
+    doc.setFontSize(8);
+    doc.text("EMPLOYEE'S SIGNATURE", 55, sigY + 4, { align: 'center' });
     if (header.employee_signed_by) {
-        doc.setFont("helvetica", "italic");
-        doc.text(`Digitally signed by ${header.employee_signed_by} on ${header.employee_signed_date}`, 14, finalY - 2);
+        doc.setFontSize(6);
+        doc.text(`Signed: ${header.employee_signed_date}`, 20, sigY + 8);
     }
 
-    // Supervisor
-    doc.setDrawColor(0);
-    doc.line(150, finalY, 250, finalY);
-    doc.setFont("helvetica", "normal");
-    doc.text("Supervisor Signature", 150, finalY + 5);
-
+    const supY = sigY + 25;
+    doc.setFontSize(10);
+    doc.text(header.supervisor_signed_by || '', 20, supY - 2);
+    doc.line(20, supY, 90, supY);
+    doc.setFontSize(8);
+    doc.text("SUPERVISOR'S SIGNATURE", 55, supY + 4, { align: 'center' });
     if (header.supervisor_signed_by) {
-        doc.setFont("helvetica", "italic");
-        doc.text(`Digitally signed by ${header.supervisor_signed_by} on ${header.supervisor_signed_date}`, 150, finalY - 2);
+        doc.setFontSize(6);
+        doc.text(`Signed: ${header.supervisor_signed_date}`, 20, supY + 8);
     }
 
-    // --- SAVE ---
-    // If visualized, maybe window.open? Or save.
-    // User asked to "Visualize", but "Save" is safer for popup blockers.
-    // doc.output('dataurlnewwindow'); // This visualizes
-    doc.save(`TimeSheet_${header.employee_name}_${header.period_start}.pdf`);
+    doc.save(`TimeSheet_${header.employee_name}.pdf`);
 };

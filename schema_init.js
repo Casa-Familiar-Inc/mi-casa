@@ -20,9 +20,10 @@ async function main() {
             const hasJobTitle = fields.some(f => f.name === 'job_title');
             const hasDirectReports = fields.some(f => f.name === 'direct_reports');
             const hasIsSupervisor = fields.some(f => f.name === 'is_supervisor');
+            const hasManagerEmail = fields.some(f => f.name === 'manager_email');
             
             // Force update if any field is missing
-            if (!hasJobTitle || !hasDirectReports || !hasIsSupervisor) {
+            if (!hasJobTitle || !hasDirectReports || !hasIsSupervisor || !hasManagerEmail) {
                 console.log("Updating 'users' collection schema...");
                 const newFields = JSON.parse(JSON.stringify(fields)); // Deep copy
                 
@@ -35,8 +36,11 @@ async function main() {
                     newFields.push({ name: 'direct_reports', type: 'json' });
                 }
                 if (!hasIsSupervisor) {
-                    console.log("Adding is_supervisor field");
                     newFields.push({ name: 'is_supervisor', type: 'bool' });
+                }
+                if (!fields.some(f => f.name === 'manager_email')) {
+                    console.log("Adding manager_email field");
+                    newFields.push({ name: 'manager_email', type: 'text' });
                 }
                 await pb.collections.update('users', { fields: newFields });
                 console.log("'users' collection updated.");

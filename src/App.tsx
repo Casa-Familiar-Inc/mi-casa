@@ -25,6 +25,7 @@ import { ITManufacturerList } from "./pages/it-manufacturer/list";
 import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/login";
 import { TimeSheetPage } from "./pages/timesheets";
+import { TimeSheetList } from "./pages/timesheets/list";
 import { SupervisorDashboard } from "./components/timesheets/SupervisorDashboard";
 import pb from "./pocketbase";
 import { combinedAuthProvider } from "./combinedAuthProvider";
@@ -71,11 +72,27 @@ function App() {
                   },
                 },
                 {
+                    name: "HR",
+                    meta: {
+                        label: "HR"
+                    }
+                },
+                {
                   name: "TimeSheets",
                   list: "/timesheets",
+                  create: "/timesheets/entry",
                   meta: {
                     label: "My TimeSheet",
+                    parent: "HR"
                   },
+                },
+                {
+                    name: "Supervisor",
+                    list: "/supervisor",
+                    meta: {
+                        label: "Supervisor Dashboard",
+                        parent: "HR"
+                    }
                 },
               ]}
               options={{
@@ -109,7 +126,9 @@ function App() {
                   <Route path="/it-manufacturer">
                       <Route index element={<ITManufacturerList />} />
                   </Route>
-                  <Route path="/timesheets" element={<TimeSheetPage />} />
+                  <Route path="/timesheets" element={<TimeSheetList />} />
+                  <Route path="/timesheets/entry" element={<TimeSheetPage />} />
+                  <Route path="/timesheets/view/:id" element={<TimeSheetPage />} />
                   <Route path="/timesheets/review/:email" element={<TimeSheetPage />} />
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                 </Route>

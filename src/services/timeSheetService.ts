@@ -19,7 +19,7 @@ export const TimeSheetService = {
             if (headerId) {
                 await pb.collection('HR_TimeSheetHeaders').update(headerId, {
                     ...data.header,
-                    employee_email: userEmail // Ensure email logic
+                    // employee_email: userEmail // REMOVED: Do not overwrite email on update (prevents supervisor stealing)
                 });
             } else {
                 const created = await pb.collection('HR_TimeSheetHeaders').create({
@@ -61,6 +61,9 @@ export const TimeSheetService = {
             ));
 
             for (const comp of data.compTime) {
+                // Filter out empty entries
+                if (!comp.date && !comp.rationale) continue;
+
                 await pb.collection('HR_CompTimeEntries').create({
                     ...comp,
                     header: headerId
@@ -111,9 +114,70 @@ export const TimeSheetService = {
         }
     },
 
-    async getSubmittedTimeSheets(): Promise<HR_TimeSheetHeader[]> {
+    async getMyTimeSheets(email: string): Promise<HR_TimeSheetHeader[]> {
         try {
-            let filter = `status = "Submitted"`;
+            return await pb.collection('HR_TimeSheetHeaders').getFullList({
+                filter: `employee_email = "${email}"`,
+                sort: '-period_start',
+            });
+        } catch (error) {
+            console.error("Error fetching my timesheets:", error);
+            return [];
+        }
+    },
+
+    async ensureTimeSheet(email: string, start: string, end: string, user: string): Promise<string> {
+        const existing = await this.getTimeSheet(email, start);
+        if (existing) {
+            return existing.header.id;
+        }
+
+        try {
+            const header = await pb.collection('HR_TimeSheetHeaders').create({
+                employee_email: email,
+                employee_name: user,
+                period_start: start,
+                period_end: end,
+                status: 'Draft',
+                total_hours: 0,
+                additional_info: '',
+                employee_signed_by: '',
+                employee_signed_date: '',
+                supervisor_signed_by: '',
+                supervisor_signed_date: ''
+            });
+            return header.id;
+        } catch (error) {
+            console.error("Error ensuring timesheet:", error);
+            throw error;
+        }
+    },
+
+    async getTimeSheetById(id: string): Promise<TimeSheetFull | null> {
+        try {
+            const header = await pb.collection('HR_TimeSheetHeaders').getOne<HR_TimeSheetHeader>(id, {
+                expand: 'HR_TimeSheetLogs(header),HR_CompTimeEntries(header)'
+            });
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const expanded = header.expand as any;
+            const logs: HR_TimeSheetLog[] = expanded['HR_TimeSheetLogs(header)'] || [];
+            const compTime: HR_CompTimeEntry[] = expanded['HR_CompTimeEntries(header)'] || [];
+
+            logs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+            return { header, logs, compTime };
+        } catch (error) {
+            console.error("Error fetching timesheet by ID:", error);
+            return null;
+        }
+    },
+
+    async getSubmittedTimeSheets(statuses: string[] = ['Submitted']): Promise<HR_TimeSheetHeader[]> {
+        try {
+            // Filter by statuses provided
+            const statusFilter = statuses.map(s => `status = "${s}"`).join(' || ');
+            let filter = `(${statusFilter})`;
 
             // Secure Logic:
             // 1. Get current logged-in user
@@ -206,8 +270,7 @@ export const TimeSheetService = {
                 status: 'Rejected',
                 supervisor_signed_by: '',
                 employee_signed_by: '',
-                employee_signed_date: '',
-                additional_info: `[REJECTED]: ${reason}`
+                employee_signed_date: ''
             });
         } catch (error) {
             console.error("Error rejecting timesheet:", error);

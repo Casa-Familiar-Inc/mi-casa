@@ -36,12 +36,14 @@ import { useGetIdentity, useGo, usePermissions } from '@refinedev/core';
 import { toast } from "sonner";
 import { Settings, Download } from 'lucide-react';
 import { ActionToolbar } from '../common/ActionToolbar';
+import { sendGraphEmail, getManagerProfile } from '../../utils/graphEmail';
 
 interface TimeSheetContainerProps {
     userEmail?: string;
+    timesheetId?: string;
 }
 
-export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmail }) => {
+export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmail, timesheetId }) => {
     const { data: identity } = useGetIdentity<{ email: string, name: string }>();
     const { data: permissions } = usePermissions({}); // { isSupervisor: boolean, jobTitle: string }
     const go = useGo();
@@ -49,7 +51,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const currentUserName = identity?.name || '';
     
     // Supervisor logic: Viewing someone else
-    const isSupervisorView = !!userEmail && userEmail !== currentUserEmail;
+
     
     // State
     const [periods, setPeriods] = useState<{key: string, label: string, start: string, end: string}[]>([]);
@@ -61,6 +63,13 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const [isLoading, setIsLoading] = useState(true);
     const [userSettings, setUserSettings] = useState<HR_EmployeeSettings | null>(null);
     const [additionalInfo, setAdditionalInfo] = useState('');
+    
+    // Supervisor logic: Viewing someone else
+    // If header is loaded, check the header's employee email.
+    // If not loaded yet, fallback to userEmail prop (if provided).
+    const isSupervisorView = header 
+        ? (header.employee_email !== currentUserEmail) 
+        : (!!userEmail && userEmail !== currentUserEmail);
     
     // UI State
     const [supervisorEditMode, setSupervisorEditMode] = useState(false);
@@ -84,7 +93,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         if (currentUserEmail) {
            init();
         }
-    }, [currentUserEmail, userEmail]);
+    }, [currentUserEmail, userEmail, timesheetId]);
 
     const init = async () => {
         setIsLoading(true);
@@ -92,15 +101,48 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             // 1. Generate Periods
             const availablePeriods = generatePeriods(12);
             setPeriods(availablePeriods);
-            const current = availablePeriods[0];
-            setSelectedPeriodKey(current.key);
 
             // 2. Load Settings
             const settings = await TimeSheetService.getUserSettings(currentUserEmail);
             setUserSettings(settings);
 
-            // 3. Load Data for current period
-            await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end, settings || undefined);
+            // 3. Load Data
+            if (timesheetId) {
+                // LOAD BY ID (View Mode)
+                const data = await TimeSheetService.getTimeSheetById(timesheetId);
+                if (data) {
+                    setHeader(data.header);
+                    
+                    if (data.logs && data.logs.length > 0) {
+                        setLogs(data.logs);
+                    } else {
+                        // If header exists but logs don't (newly created), generate them
+                        setLogs(generateEmptyLogs(data.header.period_start, data.header.period_end, settings || undefined));
+                    }
+                    setCompTimeEntries(data.compTime);
+                    setAdditionalInfo(data.header.additional_info || '');
+
+                    // Try to match period to dropdown
+                    // The generatePeriods function creates keys like "2023-12-01|2023-12-15" (if that was your logic? let's check generatePeriods)
+                    // Wait, generatePeriods creates keys implicitly? 
+                    // Let's look at generatePeriods again. It returns { key, ... }.
+                    // We need to find the period that matches the header's start/end.
+                    
+                    const match = availablePeriods.find(p => p.start === data.header.period_start);
+                    if (match) {
+                        setSelectedPeriodKey(match.key);
+                    } else {
+                        // If outside range, maybe insert a custom option or just show "Unknown Period"? 
+                        // For now we just don't select one or select empty.
+                        setSelectedPeriodKey('');
+                    }
+                }
+            } else {
+                 // DEFAULT LOAD (Current Period)
+                const current = availablePeriods[0];
+                setSelectedPeriodKey(current.key);
+                await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end, settings || undefined);
+            }
 
         } catch (e) {
             console.error(e);
@@ -212,12 +254,21 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
     const handleLogChange = (index: number, field: keyof HR_TimeSheetLog, value: string) => {
         const newLogs = [...logs];
+        
+        // Prevent negative values
+        let sanitizedValue = value;
+        const isLeaveField = ['wd_hours', 'vac_hours', 'hol_hours', 'sick_hours', 'bereav_hours', 'ot_hours', 'jury_duty_hours', 'unpaid_hours'].includes(field);
+        
+        if (isLeaveField) {
+            if (value && parseFloat(value) < 0) sanitizedValue = '0';
+        }
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (newLogs[index] as any)[field] = value;
+        (newLogs[index] as any)[field] = sanitizedValue;
 
         // Recalculate Logic
         const isTimeField = ['time_in', 'lunch_out', 'lunch_in', 'time_out'].includes(field);
-        const isLeaveField = ['wd_hours', 'vac_hours', 'hol_hours', 'sick_hours', 'bereav_hours', 'ot_hours', 'jury_duty_hours', 'unpaid_hours'].includes(field);
+
 
         if (isTimeField) {
              const totalStr = TimeUtils.calculateDailyTotal(
@@ -277,16 +328,18 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
                 headerData = {
                     ...header,
-                    status,
+                    status: status, // This respects the passed status
+                    total_hours: totalHours, // Update totals
                     additional_info: additionalInfo,
                     employee_signed_by: isEmployeeSigning ? user : header.employee_signed_by,
                     employee_signed_date: isEmployeeSigning ? new Date().toLocaleString() : header.employee_signed_date,
+                    // IMPORTANT: Do NOT touch employee_email here. It's already in `header`.
                 };
             } else {
                 // Create new
                 headerData = {
                     id: '', created: '', updated: '', collectionId: '', collectionName: '',
-                    employee_email: email,
+                    employee_email: email, 
                     employee_name: user,
                     period_start: p?.start || '',
                     period_end: p?.end || '',
@@ -300,14 +353,80 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 };
             }
 
-            await TimeSheetService.saveTimeSheet({
+            // Save to DB
+            const savedId = await TimeSheetService.saveTimeSheet({
                 header: headerData,
                 logs: logs,
                 compTime: compTimeEntries
-            }, email);
+            }, headerData.employee_email); // Pass the CORRECT email (original employee), NOT current user email
+
+            // Local State Update
+            // We must setHeader with the data we just saved to ensure UI reflects it immediately
+            // without waiting for a reload.
+            setHeader({...headerData, id: savedId});
+            
+            // If we are supervisor saving edits, we likely want to exit edit mode?
+            // The button calling this: setSupervisorEditMode(false); handleSave('Submitted');
+            // So edit mode is already false.
+            // Status remains 'Submitted'.
+            // header.employee_email remains as is.
+            // isSupervisorView remains true.
+            
+            // Re-calc isSupervisorView derived state? 
+            // `const isSupervisorView = header ? (header.employee_email !== currentUserEmail) ...`
+            // If headerData.employee_email is correct, isSupervisorView stays correct.
 
             toast.success(`Timesheet ${status === 'Draft' ? 'Saved' : 'Submitted'} successfully`);
-            if (p) await loadTimeSheet(email, p.start, p.end, userSettings || undefined);
+            
+            // Do NOT reload full timesheet if we can avoid it, as it might reset state or flicker?
+            // "if (p) await loadTimeSheet..." lines 390 causes a reload.
+            // It might serve to refresh data from server. 
+            // If server data is correct (tested in step 1032), reload is fine.
+
+
+            // --- EMAIL NOTIFICATIONS ---
+            // 1. Employee Submitting -> Notify Supervisor (if we can find one)
+            //    Requirement: We need the supervisor's email. 
+            //    Currently we filter by "Direct Reports", but we don't store "My Supervisor's Email" on the user record easily without looking it up.
+            //    For MVP: We will notify the employee "Submission Successful" via email as a test, 
+            //    OR if we have the supervisor email in 'header'? No, header has supervisor_signed_by name.
+            
+            // Let's implement at least the "Supervisor Approving" -> Notify Employee (we have employee_email).
+            
+            if (status === 'Submitted' && !isSupervisorView) {
+                // Employee Submitted. Notify Supervisor.
+                try {
+                    const manager = await getManagerProfile();
+                    console.log(manager);
+                    if (manager && manager.email) {
+                         await sendGraphEmail(
+                            manager.email,
+                            `Timesheet Submitted: ${user}`,
+                            `<p>${user} has submitted a timesheet for ${p?.start} - ${p?.end}.</p><p>Please review and approve.</p>`
+                        );
+                        toast.success(`Notification sent to supervisor: ${manager.name}`);
+                    } else {
+                        console.warn("Could not find manager to notify.");
+                    }
+                } catch (err) {
+                    console.error("Failed to notify supervisor", err);
+                }
+            }
+            
+            toast.success(`Timesheet ${status === 'Draft' ? 'Saved' : 'Submitted'} successfully`);
+            
+            // Reload by ID if possible (since we have savedId and likely are in view/:id mode)
+            // This prevents context switching issues.
+            const reloaded = await TimeSheetService.getTimeSheetById(savedId);
+            if (reloaded) {
+                setHeader(reloaded.header);
+                setLogs(reloaded.logs);
+                setCompTimeEntries(reloaded.compTime);
+                setAdditionalInfo(reloaded.header.additional_info || '');
+            } else {
+                 // Fallback if ID load fails (rare)
+                 if (p) await loadTimeSheet(headerData.employee_email, p.start, p.end, userSettings || undefined);
+            }
 
         } catch (e) {
             console.error(e);
@@ -362,8 +481,19 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             await handleSave(header.status as any); 
             // Then approve
             await TimeSheetService.approveTimeSheet(header.id, currentUserName || 'Supervisor');
+            
+            // Notify Employee
+            if (header.employee_email) {
+                await sendGraphEmail(
+                    header.employee_email,
+                    "Timesheet Approved",
+                    `<p>Your timesheet for ${header.period_start} - ${header.period_end} has been <strong>APPROVED</strong> by ${currentUserName || 'Supervisor'}.</p>`
+                );
+            }
+
             toast.success("Timesheet Approved");
-            if (selectedPeriodKey) await handlePeriodChange(selectedPeriodKey);
+            // Redirect to dashboard (list) as requested
+            go({ to: '/timesheets', type: 'push' });
         } catch(e) { toast.error("Failed to approve"); }
     };
 
@@ -371,10 +501,34 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         if (!header || !rejectReason) return;
         try {
             await TimeSheetService.rejectTimeSheet(header.id, rejectReason);
+            
+            // Notify Employee
+            if (header.employee_email) {
+                await sendGraphEmail(
+                    header.employee_email,
+                    "Timesheet Rejected",
+                    `<p>Your timesheet for ${header.period_start} - ${header.period_end} has been <strong>REJECTED</strong>.</p><p>Reason: ${rejectReason}</p><p>Please correct and resubmit.</p>`
+                );
+            }
+
             toast.success("Timesheet Returned to Draft");
             setRejectDialogOpen(false);
-            if (selectedPeriodKey) await handlePeriodChange(selectedPeriodKey);
+            
+            // Redirect to dashboard (list) as requested
+            go({ to: '/timesheets', type: 'push' });
         } catch(e) { toast.error("Failed to reject"); }
+    };
+    
+    // UI Helpers
+    const showTimePicker = (e: React.FocusEvent<HTMLInputElement>) => {
+        try {
+            if (e.currentTarget.showPicker) {
+                e.currentTarget.showPicker();
+            }
+        } catch (error) {
+            // Fails silently if browser blocks it (e.g. non-user-triggered focus)
+            console.debug("Picker open suppressed", error);
+        }
     };
 
     // --- CALCULATIONS ---
@@ -408,6 +562,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             </Label>
                             <Input
                                 id="time_in"
+                                type="time"
+                                onFocus={showTimePicker}
                                 value={tempSettings.default_time_in}
                                 onChange={(e) => setTempSettings({...tempSettings, default_time_in: e.target.value})}
                                 className="col-span-3"
@@ -419,6 +575,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             </Label>
                             <Input
                                 id="lunch_out"
+                                type="time"
+                                onFocus={showTimePicker}
                                 value={tempSettings.default_lunch_out}
                                 onChange={(e) => setTempSettings({...tempSettings, default_lunch_out: e.target.value})}
                                 className="col-span-3"
@@ -430,6 +588,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             </Label>
                             <Input
                                 id="lunch_in"
+                                type="time"
+                                onFocus={showTimePicker}
                                 value={tempSettings.default_lunch_in}
                                 onChange={(e) => setTempSettings({...tempSettings, default_lunch_in: e.target.value})}
                                 className="col-span-3"
@@ -441,6 +601,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             </Label>
                             <Input
                                 id="time_out"
+                                type="time"
+                                onFocus={showTimePicker}
                                 value={tempSettings.default_time_out}
                                 onChange={(e) => setTempSettings({...tempSettings, default_time_out: e.target.value})}
                                 className="col-span-3"
@@ -458,9 +620,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 title={isSupervisorView ? `Reviewing: ${header?.employee_name || userEmail}` : "Employee Time Sheet"}
                 endActions={
                     <>
-                         { permissions?.isSupervisor && !isSupervisorView && (
-                            <Button variant="secondary" onClick={() => go({ to: '/supervisor' })}>Supervisor Dashboard</Button>
-                         )}
+
 
                          {/* SUPERVISOR ACTIONS */}
                          {isSupervisorView && header?.status === 'Submitted' && (
@@ -510,18 +670,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                      <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || currentUserName}</span></div>
                      <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
                 </div>
-                <div className="w-64">
-                    <label className="text-xs text-muted-foreground mb-1 block">Select Period</label>
-                    <Select value={selectedPeriodKey} onValueChange={handlePeriodChange}>
-                        <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select Period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {periods.map(p => (
-                                <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <div>
+                    <div className="text-sm font-semibold text-right">Period</div>
+                    <div className="text-lg font-bold">{header?.period_start} - {header?.period_end}</div>
                 </div>
             </div>
 
@@ -564,23 +715,23 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                         <TableCell className="p-2 text-muted-foreground">{log.day_name}</TableCell>
                                         
                                         {/* TIME INPUTS */}
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_in} onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_out} onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_in} onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_out} onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_in} onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_out} onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_in} onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_out} onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)} /></TableCell>
                                         
                                         {/* READ ONLY REG */}
                                         <TableCell className="p-1 font-bold bg-blue-50/30 text-foreground">{log.reg_hours?.toString()}</TableCell>
 
                                         {/* LEAVE INPUTS */}
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.wd_hours} onChange={(e) => handleLogChange(idx, 'wd_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.vac_hours} onChange={(e) => handleLogChange(idx, 'vac_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.hol_hours} onChange={(e) => handleLogChange(idx, 'hol_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.sick_hours} onChange={(e) => handleLogChange(idx, 'sick_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.bereav_hours} onChange={(e) => handleLogChange(idx, 'bereav_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.ot_hours} onChange={(e) => handleLogChange(idx, 'ot_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.jury_duty_hours} onChange={(e) => handleLogChange(idx, 'jury_duty_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" value={log.unpaid_hours} onChange={(e) => handleLogChange(idx, 'unpaid_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.wd_hours} onChange={(e) => handleLogChange(idx, 'wd_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.vac_hours} onChange={(e) => handleLogChange(idx, 'vac_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.hol_hours} onChange={(e) => handleLogChange(idx, 'hol_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.sick_hours} onChange={(e) => handleLogChange(idx, 'sick_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.bereav_hours} onChange={(e) => handleLogChange(idx, 'bereav_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.ot_hours} onChange={(e) => handleLogChange(idx, 'ot_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.jury_duty_hours} onChange={(e) => handleLogChange(idx, 'jury_duty_hours', e.target.value)} /></TableCell>
+                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.unpaid_hours} onChange={(e) => handleLogChange(idx, 'unpaid_hours', e.target.value)} /></TableCell>
                                     </TableRow>
                                 ))}
                                 {/* TOTALS ROW */}
@@ -631,18 +782,25 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
                 {/* COMP TIME RATIONALE */}
                 <div className="flex-grow">
-                     <div className="font-bold text-sm mb-2">Comp Time Rationale</div>
-                     <div className="grid grid-cols-[150px_1fr] gap-4 mb-2 text-xs font-medium text-muted-foreground">
-                         <div>Date</div>
-                         <div>Rationale</div>
-                     </div>
+                     {compTimeEntries.length > 0 && (
+                        <>
+                            <div className="font-bold text-sm mb-2">Comp Time Rationale</div>
+                            <div className="grid grid-cols-[150px_1fr] gap-4 mb-2 text-xs font-medium text-muted-foreground">
+                                <div>Date</div>
+                                <div>Rationale</div>
+                            </div>
+                        </>
+                     )}
                      {compTimeEntries.map((entry, idx) => (
                          <div key={idx} className="grid grid-cols-[150px_1fr] gap-4 mb-2">
                              <Input 
                                 readOnly={isReadOnly}
-                                placeholder="mm/dd/yyyy" 
+                                type="date"
                                 className="h-8"
                                 value={entry.date}
+                                onFocus={(e) => {
+                                    try { e.currentTarget.showPicker(); } catch {}
+                                }}
                                 onChange={(e) => handleCompTimeChange(idx, 'date', e.target.value)}
                              />
                              <Input 

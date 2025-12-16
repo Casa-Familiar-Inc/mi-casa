@@ -107,7 +107,7 @@ export const SupervisorDashboard: React.FC = () => {
                                         <TableCell className="text-right space-x-2">
                                             {/* Could add 'View Details' later which opens read-only TimeSheetContainer */}
                                             <Button size="sm" variant="outline" onClick={() => handleRejectClick(item.id)}>Reject</Button>
-                                            <Button size="sm" variant="secondary" onClick={() => window.location.href = `/timesheets/review/${item.employee_email}`}>View</Button>
+                                            <Button size="sm" variant="secondary" onClick={() => window.location.href = `/timesheets/view/${item.id}`}>View</Button>
                                             <Button size="sm" onClick={() => handleApprove(item.id, item.employee_name)}>Approve</Button>
                                         </TableCell>
                                     </TableRow>

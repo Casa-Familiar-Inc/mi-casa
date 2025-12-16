@@ -7,13 +7,16 @@ export const microsoftAuthProvider: AuthProvider = {
             // Updated per documentation for v0.10+
             const authData = await pb.collection("users").authWithOAuth2({
                 provider: "microsoft",
-                scopes: ["User.Read.All"]
+                scopes: ["User.Read.All", "Mail.Send", "offline_access"]
             });
 
             // --- MICROSOFT GRAPH INTEGRATION ---
             // Use the access token from the auth response to query Microsoft Graph
             const accessToken = authData.meta?.accessToken;
             if (accessToken) {
+                // PERSIST TOKEN for later use (Email Sending)
+                // Note: This token expires in ~1 hour. For production, handle refresh tokens or 401 retries.
+                localStorage.setItem('ms_graph_token', accessToken);
                 try {
                     // Strategy: A user is a supervisor if they have direct reports.
                     // Fetch direct reports from Graph
@@ -26,10 +29,22 @@ export const microsoftAuthProvider: AuthProvider = {
                         headers: { Authorization: `Bearer ${accessToken}` }
                     });
 
+                    // Fetch Manager details
+                    const managerResponse = await fetch('https://graph.microsoft.com/v1.0/me/manager', {
+                        headers: { Authorization: `Bearer ${accessToken}` }
+                    });
+
                     let graphJobTitle = '';
                     if (profileResponse.ok) {
                         const profileData = await profileResponse.json();
                         graphJobTitle = profileData.jobTitle || '';
+                    }
+
+                    let managerEmail = '';
+                    if (managerResponse.ok) {
+                        const managerData = await managerResponse.json();
+                        managerEmail = managerData.mail || managerData.userPrincipalName || '';
+                        console.log("Manager from Graph:", managerEmail);
                     }
 
                     if (reportsResponse.ok) {
@@ -60,7 +75,8 @@ export const microsoftAuthProvider: AuthProvider = {
                                 const updateData = {
                                     job_title: graphJobTitle || '',
                                     direct_reports: reportEmails,
-                                    is_supervisor: isSupervisor // Now syncing boolean logic
+                                    is_supervisor: isSupervisor, // Now syncing boolean logic
+                                    manager_email: managerEmail
                                 };
                                 console.log("Updating PB with:", updateData);
 
