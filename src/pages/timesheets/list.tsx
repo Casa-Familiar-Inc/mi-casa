@@ -43,8 +43,9 @@ export const TimeSheetList = () => {
 
     const loadData = async (email: string) => {
         setIsLoading(true);
-        const data = await TimeSheetService.getMyTimeSheets(email);
-        setHeaders(data);
+        // Load My Timesheets
+        const myData = await TimeSheetService.getMyTimeSheets(email);
+        setHeaders(myData);
         setIsLoading(false);
     };
     
@@ -106,6 +107,41 @@ export const TimeSheetList = () => {
         }
     };
 
+    const renderTable = (data: HR_TimeSheetHeader[], showEmployeeName = false) => (
+         <Table>
+            <TableHeader>
+                <TableRow>
+                    {showEmployeeName && <TableHead>Employee</TableHead>}
+                    <TableHead>Period</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Total Hours</TableHead>
+                    <TableHead>Signed By</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {data.map(h => (
+                    <TableRow key={h.id}>
+                        {showEmployeeName && <TableCell className="font-medium">{h.employee_name}</TableCell>}
+                        <TableCell>{h.period_start} - {h.period_end}</TableCell>
+                        <TableCell>
+                            <Badge variant="outline" className={getStatusColor(h.status)}>
+                                {h.status || 'Draft'}
+                            </Badge>
+                        </TableCell>
+                        <TableCell>{h.total_hours?.toFixed(2)}</TableCell>
+                        <TableCell>{h.employee_signed_by || '-'}</TableCell>
+                        <TableCell className="text-right">
+                            <Button variant="ghost" size="sm" onClick={() => go({ to: `/timesheets/view/${h.id}` })}>
+                                {showEmployeeName ? 'Review' : 'View'}
+                            </Button>
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    );
+
     return (
         <div className="p-6 space-y-6">
             <div className="flex justify-between items-center">
@@ -128,37 +164,7 @@ export const TimeSheetList = () => {
                                     Create Timesheet
                                 </Button>
                             </div>
-                        ) :
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Period</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Total Hours</TableHead>
-                                    <TableHead>Signed By</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {headers.map(h => (
-                                    <TableRow key={h.id}>
-                                        <TableCell>{h.period_start} - {h.period_end}</TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline" className={getStatusColor(h.status)}>
-                                                {h.status}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>{h.total_hours?.toFixed(2)}</TableCell>
-                                        <TableCell>{h.employee_signed_by || '-'}</TableCell>
-                                        <TableCell className="text-right">
-                                            <Button variant="ghost" size="sm" onClick={() => go({ to: `/timesheets/view/${h.id}` })}>
-                                                View
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                        ) : renderTable(headers)
                     )}
                 </CardContent>
             </Card>

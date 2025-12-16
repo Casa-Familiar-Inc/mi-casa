@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { Settings, Download } from 'lucide-react';
 import { ActionToolbar } from '../common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../utils/graphEmail';
+import pb from '../../pocketbase';
 
 interface TimeSheetContainerProps {
     userEmail?: string;
@@ -545,6 +546,23 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
     if (isLoading && !logs.length) return <div>Loading...</div>;
 
+    const handleSupervisorReopen = async () => {
+        if (!header) return;
+        try {
+            await pb.collection('HR_TimeSheetHeaders').update(header.id, {
+                status: 'Submitted',
+                supervisor_signed_by: '',
+                supervisor_signed_date: ''
+            });
+            toast.success("Timesheet Unlocked");
+            // Reload page to reset state safely
+            window.location.reload(); 
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to unlock");
+        }
+    };
+
     return (
         <div className="space-y-6 max-w-[1400px]">
              <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
@@ -620,23 +638,31 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 title={isSupervisorView ? `Reviewing: ${header?.employee_name || userEmail}` : "Employee Time Sheet"}
                 endActions={
                     <>
-
-
                          {/* SUPERVISOR ACTIONS */}
-                         {isSupervisorView && header?.status === 'Submitted' && (
+                         {isSupervisorView && (
                              <>
-                                <Button variant="destructive" onClick={() => setRejectDialogOpen(true)}>Reject</Button>
-                                
-                                { !supervisorEditMode ? (
-                                    <Button variant="secondary" onClick={() => setSupervisorEditMode(true)}>Enable Editing</Button>
-                                ) : (
-                                    <Button variant="secondary" onClick={() => {
-                                        setSupervisorEditMode(false);
-                                        handleSave('Submitted');
-                                    }}>Save Edits & Lock</Button>
+                                {(header?.status === 'Submitted') && (
+                                    <>
+                                        <Button variant="destructive" onClick={() => setRejectDialogOpen(true)}>Reject</Button>
+                                        
+                                        {!supervisorEditMode ? (
+                                            <Button variant="secondary" onClick={() => setSupervisorEditMode(true)}>Enable Editing</Button>
+                                        ) : (
+                                            <Button variant="secondary" onClick={() => {
+                                                setSupervisorEditMode(false);
+                                                handleSave('Submitted');
+                                            }}>Save Edits & Lock</Button>
+                                        )}
+
+                                        <Button className="bg-green-600 hover:bg-green-700" onClick={handleSupervisorApprove}>Approve</Button>
+                                    </>
                                 )}
 
-                                <Button className="bg-green-600 hover:bg-green-700" onClick={handleSupervisorApprove}>Approve</Button>
+                                {header?.status === 'Approved' && (
+                                    <Button variant="outline" className="text-yellow-700 border-yellow-200 hover:bg-yellow-50" onClick={handleSupervisorReopen}>
+                                        Unlock / Reopen
+                                    </Button>
+                                )}
                              </>
                          )}
 

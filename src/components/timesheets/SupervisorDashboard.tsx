@@ -14,12 +14,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { useGetIdentity } from '@refinedev/core';
 import { toast } from 'sonner';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useGo } from '@refinedev/core';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 
 export const SupervisorDashboard: React.FC = () => {
     const { data: identity } = useGetIdentity<{ name: string }>();
-    const [submissions, setSubmissions] = useState<HR_TimeSheetHeader[]>([]);
+    const go = useGo();
+    const [pending, setPending] = useState<HR_TimeSheetHeader[]>([]);
+    const [history, setHistory] = useState<HR_TimeSheetHeader[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [rejectDialog, setRejectDialog] = useState<{ open: boolean, id: string }>({ open: false, id: '' });
     const [rejectReason, setRejectReason] = useState('');
@@ -31,10 +35,14 @@ export const SupervisorDashboard: React.FC = () => {
     const loadSubmissions = async () => {
         setIsLoading(true);
         try {
-            // Service handles secure filtering now
-            const data = await TimeSheetService.getSubmittedTimeSheets();
-            console.log(data);
-            setSubmissions(data);
+            // Fetch ALL statuses
+            // Pending = Submitted
+            // History = Approved, Rejected
+            const allData = await TimeSheetService.getSubmittedTimeSheets(['Submitted', 'Approved', 'Rejected']);
+            
+            setPending(allData.filter(d => d.status === 'Submitted'));
+            setHistory(allData.filter(d => d.status === 'Approved' || d.status === 'Rejected'));
+
         } catch (e) {
             console.error(e);
         } finally {
@@ -44,7 +52,6 @@ export const SupervisorDashboard: React.FC = () => {
 
     const handleApprove = async (id: string, employeeName: string) => {
         if (!confirm(`Approve timesheet for ${employeeName}?`)) return;
-        
         try {
             await TimeSheetService.approveTimeSheet(id, identity?.name || 'Supervisor');
             toast.success(`Approved timesheet for ${employeeName}`);
@@ -61,7 +68,6 @@ export const SupervisorDashboard: React.FC = () => {
 
     const handleConfirmReject = async () => {
         if (!rejectReason) return toast.error("Please provide a reason");
-        
         try {
             await TimeSheetService.rejectTimeSheet(rejectDialog.id, rejectReason);
             toast.success("Timesheet returned to Draft");
@@ -71,59 +77,94 @@ export const SupervisorDashboard: React.FC = () => {
             toast.error("Failed to reject");
         }
     };
+    
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'Approved': return 'bg-green-100 text-green-800';
+            case 'Rejected': return 'bg-red-100 text-red-800';
+            case 'Submitted': return 'bg-yellow-100 text-yellow-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
+    const renderTable = (data: HR_TimeSheetHeader[], isPending: boolean) => (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                    <TableHead>Employee</TableHead>
+                    <TableHead>Period</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Total Hours</TableHead>
+                    <TableHead>Signed By</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {data.map(item => (
+                    <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.employee_name}</TableCell>
+                        <TableCell>{item.period_start} - {item.period_end}</TableCell>
+                        <TableCell>
+                             <Badge variant="outline" className={getStatusColor(item.status)}>
+                                {item.status}
+                            </Badge>
+                        </TableCell>
+                        <TableCell>{item.total_hours.toFixed(2)}</TableCell>
+                        <TableCell>{item.employee_signed_by}</TableCell>
+                        <TableCell className="text-right space-x-2">
+                             <Button size="sm" variant="secondary" onClick={() => go({ to: `/timesheets/view/${item.id}` })}>
+                                {isPending ? 'Review' : 'View'}
+                             </Button>
+                             {isPending && (
+                                <>
+                                    <Button size="sm" variant="outline" onClick={() => handleRejectClick(item.id)}>Reject</Button>
+                                    <Button size="sm" onClick={() => handleApprove(item.id, item.employee_name)}>Approve</Button>
+                                </>
+                             )}
+                        </TableCell>
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    );
 
     if (isLoading) return <div>Loading Dashboard...</div>;
 
     return (
         <div className="p-6 space-y-6">
             <h1 className="text-2xl font-bold">Supervisor Dashboard</h1>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Pending Approvals</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {submissions.length === 0 ? (
-                        <div className="text-center text-gray-500 py-8">No pending timesheets found.</div>
-                    ) : (
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Employee</TableHead>
-                                    <TableHead>Period</TableHead>
-                                    <TableHead>Total Hours</TableHead>
-                                    <TableHead>Signed By</TableHead>
-                                    <TableHead>Date Signed</TableHead>
-                                    <TableHead className="text-right">Actions</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {submissions.map(item => (
-                                    <TableRow key={item.id}>
-                                        <TableCell className="font-medium">{item.employee_name}</TableCell>
-                                        <TableCell>{item.period_start} - {item.period_end}</TableCell>
-                                        <TableCell>{item.total_hours.toFixed(2)}</TableCell>
-                                        <TableCell>{item.employee_signed_by}</TableCell>
-                                        <TableCell>{item.employee_signed_date}</TableCell>
-                                        <TableCell className="text-right space-x-2">
-                                            {/* Could add 'View Details' later which opens read-only TimeSheetContainer */}
-                                            <Button size="sm" variant="outline" onClick={() => handleRejectClick(item.id)}>Reject</Button>
-                                            <Button size="sm" variant="secondary" onClick={() => window.location.href = `/timesheets/view/${item.id}`}>View</Button>
-                                            <Button size="sm" onClick={() => handleApprove(item.id, item.employee_name)}>Approve</Button>
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    )}
-                </CardContent>
-            </Card>
+            
+            <Tabs defaultValue="pending" className="w-full">
+                <TabsList>
+                    <TabsTrigger value="pending">Pending Approvals ({pending.length})</TabsTrigger>
+                    <TabsTrigger value="history">History</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="pending">
+                    <Card>
+                        <CardHeader><CardTitle>Pending Reviews</CardTitle></CardHeader>
+                        <CardContent>
+                             {pending.length === 0 ? <p className="text-center py-8 text-muted-foreground">No pending items.</p> : renderTable(pending, true)}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="history">
+                    <Card>
+                        <CardHeader><CardTitle>Approval History</CardTitle></CardHeader>
+                        <CardContent>
+                             {history.length === 0 ? <p className="text-center py-8 text-muted-foreground">No history found.</p> : renderTable(history, false)}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
 
             <Dialog open={rejectDialog.open} onOpenChange={(open) => setRejectDialog(prev => ({ ...prev, open }))}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Reject Timesheet</DialogTitle>
                         <DialogDescription>
-                            Please provide a reason for rejection. The timesheet will be returned to 'Draft' status for the employee to correct.
+                            Please provide a reason.
                         </DialogDescription>
                     </DialogHeader>
                     <div>
