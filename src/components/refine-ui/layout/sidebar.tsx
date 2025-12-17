@@ -243,21 +243,40 @@ function SidebarHeader() {
           }
         )}
       >
-        <div>{title.icon}</div>
+        <div className="flex items-center gap-2">
+           {open ? (
+               <img src="/casa_logo.png" alt="Logo" className="h-10 w-auto" />
+           ) : (
+               <img src="/casa_logo.png" alt="Logo" className="h-8 w-auto object-contain" />
+           )}
+        </div>
         <h2
           className={cn(
             "text-sm",
-            "font-bold",
+            "font-extrabold",
+            "text-[#224193]", // Navy Blue
             "transition-opacity",
             "duration-200",
             {
               "opacity-0": !open,
               "opacity-100": open,
+              "w-0": !open, // Collapse width
+              "hidden": !open
             }
           )}
         >
-          {title.text}
+          Community Hub
         </h2>
+      </div>
+
+      {/* Brand Strip at bottom of header */}
+      <div className="absolute bottom-0 w-full">
+         <div className="flex w-full h-[3px]">
+            <div className="flex-1 bg-[#224193]"></div>
+            <div className="flex-1 bg-[#E21B29]"></div>
+            <div className="flex-1 bg-[#22AB6E]"></div>
+            <div className="flex-1 bg-[#ECBD43]"></div>
+         </div>
       </div>
 
       <ShadcnSidebarTrigger

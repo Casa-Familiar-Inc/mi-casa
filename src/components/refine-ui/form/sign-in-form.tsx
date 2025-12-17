@@ -58,12 +58,20 @@ export const SignInForm = () => {
         "bg-muted/40"
       )}
     >
-      <div className="mb-8">
-          {/* Logo could go here if available */}
-          <h1 className="text-2xl font-bold text-center">Casa Familiar HR</h1>
+      <div className="mb-6 flex flex-col items-center">
+          <img src="/casa_logo.png" alt="Casa Familiar Logo" className="h-40 w-auto mb-6" />
+          <h1 className="text-2xl font-bold text-center text-[#224193]">Casa Familiar Community Hub</h1>
       </div>
 
-      <Card className={cn("sm:w-[400px]", "p-8")}>
+      <Card className={cn("sm:w-[400px]", "p-0 overflow-hidden border-t-0")}> 
+        {/* Brand Accent Bar */}
+        <div className="flex h-2 w-full">
+            <div className="flex-1 bg-[#224193]" title="Integrity"></div>
+            <div className="flex-1 bg-[#E21B29]" title="Family"></div>
+            <div className="flex-1 bg-[#22AB6E]" title="Culture"></div>
+            <div className="flex-1 bg-[#ECBD43]" title="Respect"></div>
+        </div>
+        <div className="p-8 pt-6">
         <CardHeader className={cn("px-0 items-center")}>
           <CardTitle className="text-xl">Authentication Required</CardTitle>
           <CardDescription>
@@ -93,6 +101,7 @@ export const SignInForm = () => {
               <span>Sign in with Microsoft</span>
             </Button>
         </CardContent>
+      </div> 
       </Card>
     </div>
   );

@@ -37,11 +37,22 @@ function DesktopHeader() {
         "bg-sidebar",
         "pr-3",
         "justify-end",
-        "z-40"
+        "z-40",
+        "relative" // Needed for absolute positioning of strip
       )}
     >
       <ThemeToggle />
       <UserDropdown />
+      
+      {/* Brand Strip */}
+      <div className="absolute bottom-0 left-0 w-full">
+         <div className="flex w-full h-[3px]">
+            <div className="flex-1 bg-[#224193]"></div>
+            <div className="flex-1 bg-[#E21B29]"></div>
+            <div className="flex-1 bg-[#22AB6E]"></div>
+            <div className="flex-1 bg-[#ECBD43]"></div>
+         </div>
+      </div>
     </header>
   );
 }
