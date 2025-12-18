@@ -42,7 +42,6 @@ function DesktopHeader() {
       )}
     >
       <ThemeToggle />
-      <UserDropdown />
       
       {/* Brand Strip */}
       <div className="absolute bottom-0 left-0 w-full">

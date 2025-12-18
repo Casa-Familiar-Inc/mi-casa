@@ -1,4 +1,12 @@
 import { Authenticated, GitHubBanner, Refine } from "@refinedev/core";
+import { 
+  LayoutDashboard, 
+  Tags, 
+  Factory, 
+  Users, 
+  Clock, 
+  ShieldAlert 
+} from "lucide-react";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
 
@@ -36,7 +44,7 @@ function App() {
   const [isSupervisor, setIsSupervisor] = useState(!!(pb.authStore.record as any)?.is_supervisor);
 
   useEffect(() => {
-    return pb.authStore.onChange((token, model) => {
+    return pb.authStore.onChange((_token, model) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setIsSupervisor(!!(model as any)?.is_supervisor);
     });
@@ -48,6 +56,7 @@ function App() {
        list: "/",
        meta: {
            label: "Dashboard",
+           icon: <LayoutDashboard className="h-4 w-4" />
        }
     },
     {
@@ -58,6 +67,7 @@ function App() {
       show: "/it-category/show/:id",
       meta: {
         label: "Categories",
+        icon: <Tags className="h-4 w-4" />
       },
     },
     {
@@ -68,12 +78,14 @@ function App() {
       show: "/it-manufacturer/show/:id",
       meta: {
         label: "Manufacturers",
+        icon: <Factory className="h-4 w-4" />
       },
     },
     {
         name: "HR",
         meta: {
-            label: "HR"
+            label: "HR",
+            icon: <Users className="h-4 w-4" />
         }
     },
     {
@@ -82,7 +94,8 @@ function App() {
       create: "/timesheets/entry",
       meta: {
         label: "My TimeSheet",
-        parent: "HR"
+        parent: "HR",
+        icon: <Clock className="h-4 w-4" />
       },
     },
     ...(isSupervisor ? [{
@@ -90,7 +103,8 @@ function App() {
       list: "/supervisor",
       meta: {
           label: "Supervisor Dashboard",
-          parent: "HR"
+          parent: "HR",
+          icon: <ShieldAlert className="h-4 w-4" />
       }
     }] : [])
   ];

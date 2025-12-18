@@ -11,6 +11,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import {
   Sidebar as ShadcnSidebar,
@@ -18,6 +19,16 @@ import {
   SidebarHeader as ShadcnSidebarHeader,
   SidebarRail as ShadcnSidebarRail,
   SidebarTrigger as ShadcnSidebarTrigger,
+  SidebarFooter as ShadcnSidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   useSidebar as useShadcnSidebar,
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -26,46 +37,48 @@ import {
   useMenu,
   useRefineOptions,
   type TreeMenuItem,
+  useActiveAuthProvider,
+  useLogout,
+  useGetIdentity
 } from "@refinedev/core";
-import { ChevronRight, ListIcon } from "lucide-react";
+import { ChevronRight, ListIcon, LogOutIcon, ChevronsUpDown, Sparkles, User, Settings } from "lucide-react";
 import React from "react";
+import { UserAvatar } from "@/components/refine-ui/layout/user-avatar";
+
 
 export function Sidebar() {
   const { open } = useShadcnSidebar();
   const { menuItems, selectedKey } = useMenu();
 
   return (
-    <ShadcnSidebar collapsible="icon" className={cn("border-none")}>
-      <ShadcnSidebarRail />
+    <ShadcnSidebar collapsible="icon" className={cn("border-r")}>
       <SidebarHeader />
-      <ShadcnSidebarContent
-        className={cn(
-          "transition-discrete",
-          "duration-200",
-          "flex",
-          "flex-col",
-          "gap-2",
-          "pt-2",
-          "pb-2",
-          "border-r",
-          "border-border",
-          {
-            "px-3": open,
-            "px-1": !open,
-          }
-        )}
-      >
-        {menuItems.map((item: TreeMenuItem) => (
-          <SidebarItem
-            key={item.key || item.name}
-            item={item}
-            selectedKey={selectedKey}
-          />
-        ))}
+      
+      <ShadcnSidebarContent>
+            {/* Main Menu Items */}
+            <SidebarGroup>
+                <SidebarGroupLabel>Platform</SidebarGroupLabel>
+                <SidebarGroupContent>
+                    <SidebarMenu>
+                        {menuItems.map((item: TreeMenuItem) => (
+                             <SidebarItem 
+                                key={item.key || item.name} 
+                                item={item} 
+                                selectedKey={selectedKey} 
+                             />
+                        ))}
+                    </SidebarMenu>
+                </SidebarGroupContent>
+            </SidebarGroup>
       </ShadcnSidebarContent>
+
+      <SidebarFooter />
+      <ShadcnSidebarRail />
     </ShadcnSidebar>
   );
 }
+
+// --- ITEM COMPONENTS ---
 
 type MenuItemProps = {
   item: TreeMenuItem;
@@ -73,313 +86,162 @@ type MenuItemProps = {
 };
 
 function SidebarItem({ item, selectedKey }: MenuItemProps) {
-  const { open } = useShadcnSidebar();
+    const isSelected = item.key === selectedKey;
+    const Link = useLink();
+    const { open } = useShadcnSidebar();
 
-  if (item.meta?.group) {
-    return <SidebarItemGroup item={item} selectedKey={selectedKey} />;
-  }
-
-  if (item.children && item.children.length > 0) {
-    if (open) {
-      return <SidebarItemCollapsible item={item} selectedKey={selectedKey} />;
+    // If item has children -> Collapsible Menu
+    if(item.children && item.children.length > 0) {
+        // Check if any child is selected to auto-expand
+        const isChildSelected = item.children.some(c => c.key === selectedKey);
+        
+        return (
+            <Collapsible asChild defaultOpen={isSelected || isChildSelected} className="group/collapsible">
+                <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                        <SidebarMenuButton tooltip={item.label ?? item.name} isActive={isSelected}>
+                            <ItemIcon icon={item.icon ?? item.meta?.icon} isSelected={isSelected} />
+                            <span>{item.label ?? item.name}</span>
+                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <SidebarMenuSub>
+                            {item.children.map(child => (
+                                <SidebarMenuSubItem key={child.key}>
+                                    <SidebarMenuSubButton asChild isActive={child.key === selectedKey}>
+                                        <Link to={child.route || ''}>
+                                            <span>{child.label ?? child.name}</span>
+                                        </Link>
+                                    </SidebarMenuSubButton>
+                                </SidebarMenuSubItem>
+                            ))}
+                        </SidebarMenuSub>
+                    </CollapsibleContent>
+                </SidebarMenuItem>
+            </Collapsible>
+        );
     }
-    return <SidebarItemDropdown item={item} selectedKey={selectedKey} />;
-  }
 
-  return <SidebarItemLink item={item} selectedKey={selectedKey} />;
+    // Standard Link Item
+    return (
+        <SidebarMenuItem>
+            <SidebarMenuButton 
+                asChild 
+                isActive={isSelected} 
+                tooltip={item.label ?? item.name}
+                className={cn(
+                    isSelected ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : ""
+                )}
+            >
+                <Link to={item.route || ''}>
+                    <ItemIcon icon={item.icon ?? item.meta?.icon} isSelected={isSelected} />
+                    <span>{item.label ?? item.name}</span>
+                </Link>
+            </SidebarMenuButton>
+        </SidebarMenuItem>
+    );
 }
 
-function SidebarItemGroup({ item, selectedKey }: MenuItemProps) {
-  const { children } = item;
-  const { open } = useShadcnSidebar();
-
-  return (
-    <div className={cn("border-t", "border-sidebar-border", "pt-4")}>
-      <span
-        className={cn(
-          "ml-3",
-          "block",
-          "text-xs",
-          "font-semibold",
-          "uppercase",
-          "text-muted-foreground",
-          "transition-all",
-          "duration-200",
-          {
-            "h-8": open,
-            "h-0": !open,
-            "opacity-0": !open,
-            "opacity-100": open,
-            "pointer-events-none": !open,
-            "pointer-events-auto": open,
-          }
-        )}
-      >
-        {getDisplayName(item)}
-      </span>
-      {children && children.length > 0 && (
-        <div className={cn("flex", "flex-col")}>
-          {children.map((child: TreeMenuItem) => (
-            <SidebarItem
-              key={child.key || child.name}
-              item={child}
-              selectedKey={selectedKey}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SidebarItemCollapsible({ item, selectedKey }: MenuItemProps) {
-  const { name, children } = item;
-
-  const chevronIcon = (
-    <ChevronRight
-      className={cn(
-        "h-4",
-        "w-4",
-        "shrink-0",
-        "text-muted-foreground",
-        "transition-transform",
-        "duration-200",
-        "group-data-[state=open]:rotate-90"
-      )}
-    />
-  );
-
-  return (
-    <Collapsible key={`collapsible-${name}`} className={cn("w-full", "group")}>
-      <CollapsibleTrigger asChild>
-        <SidebarButton item={item} rightIcon={chevronIcon} />
-      </CollapsibleTrigger>
-      <CollapsibleContent className={cn("ml-6", "flex", "flex-col", "gap-2")}>
-        {children?.map((child: TreeMenuItem) => (
-          <SidebarItem
-            key={child.key || child.name}
-            item={child}
-            selectedKey={selectedKey}
-          />
-        ))}
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
-function SidebarItemDropdown({ item, selectedKey }: MenuItemProps) {
-  const { children } = item;
-  const Link = useLink();
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <SidebarButton item={item} />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="right" align="start">
-        {children?.map((child: TreeMenuItem) => {
-          const { key: childKey } = child;
-          const isSelected = childKey === selectedKey;
-
-          return (
-            <DropdownMenuItem key={childKey || child.name} asChild>
-              <Link
-                to={child.route || ""}
-                className={cn("flex w-full items-center gap-2", {
-                  "bg-accent text-accent-foreground": isSelected,
-                })}
-              >
-                <ItemIcon
-                  icon={child.meta?.icon ?? child.icon}
-                  isSelected={isSelected}
-                />
-                <span>{getDisplayName(child)}</span>
-              </Link>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function SidebarItemLink({ item, selectedKey }: MenuItemProps) {
-  const isSelected = item.key === selectedKey;
-
-  return <SidebarButton item={item} isSelected={isSelected} asLink={true} />;
-}
+// --- HEADER & FOOTER ---
 
 function SidebarHeader() {
-  const { title } = useRefineOptions();
-  const { open, isMobile } = useShadcnSidebar();
+  const { open } = useShadcnSidebar();
 
   return (
-    <ShadcnSidebarHeader
-      className={cn(
-        "p-0",
-        "h-16",
-        "border-b",
-        "border-border",
-        "flex-row",
-        "items-center",
-        "justify-between",
-        "overflow-hidden"
-      )}
-    >
-      <div
-        className={cn(
-          "whitespace-nowrap",
-          "flex",
-          "flex-row",
-          "h-full",
-          "items-center",
-          "justify-start",
-          "gap-2",
-          "transition-discrete",
-          "duration-200",
-          {
-            "pl-3": !open,
-            "pl-5": open,
-          }
-        )}
-      >
-        <div className="flex items-center gap-2">
-           {open ? (
-               <img src="/casa_logo.png" alt="Logo" className="h-10 w-auto" />
-           ) : (
-               <img src="/casa_logo.png" alt="Logo" className="h-8 w-auto object-contain" />
-           )}
-        </div>
-        <h2
-          className={cn(
-            "text-sm",
-            "font-extrabold",
-            "text-[#224193]", // Navy Blue
-            "transition-opacity",
-            "duration-200",
-            {
-              "opacity-0": !open,
-              "opacity-100": open,
-              "w-0": !open, // Collapse width
-              "hidden": !open
-            }
-          )}
-        >
-          Community Hub
-        </h2>
-      </div>
-
-      {/* Brand Strip at bottom of header */}
-      <div className="absolute bottom-0 w-full">
-         <div className="flex w-full h-[3px]">
-            <div className="flex-1 bg-[#224193]"></div>
-            <div className="flex-1 bg-[#E21B29]"></div>
-            <div className="flex-1 bg-[#22AB6E]"></div>
-            <div className="flex-1 bg-[#ECBD43]"></div>
-         </div>
-      </div>
-
-      <ShadcnSidebarTrigger
-        className={cn("text-muted-foreground", "mr-1.5", {
-          "opacity-0": !open,
-          "opacity-100": open || isMobile,
-          "pointer-events-auto": open || isMobile,
-          "pointer-events-none": !open && !isMobile,
-        })}
-      />
+    <ShadcnSidebarHeader>
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="flex items-center gap-2 px-1 py-1 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+             <div className="flex aspect-square size-8 items-center justify-center rounded-lg text-sidebar-primary-foreground">
+                <img src="/casa_logo.png" alt="Logo" className="w-full h-full object-contain" />
+             </div>
+             <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold text-[#224193]">Community Hub</span>
+                <span className="truncate text-xs">Casa Familiar</span>
+             </div>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+      
+       {/* Brand Strip */}
+       <div className="absolute bottom-0 w-full left-0 opacity-50">
+            <div className="flex w-full h-[2px]">
+                <div className="flex-1 bg-[#224193]"></div>
+                <div className="flex-1 bg-[#E21B29]"></div>
+                <div className="flex-1 bg-[#22AB6E]"></div>
+                <div className="flex-1 bg-[#ECBD43]"></div>
+            </div>
+       </div>
     </ShadcnSidebarHeader>
   );
 }
 
-function getDisplayName(item: TreeMenuItem) {
-  return item.meta?.label ?? item.label ?? item.name;
+function SidebarFooter() {
+    const { mutate: logout } = useLogout();
+    const { data: identity } = useGetIdentity<{ name: string; email: string; avatar?: string }>();
+    const { isMobile } = useShadcnSidebar();
+    
+    // Fallback if identity not loaded yet
+    const name = identity?.name || 'User';
+    const email = identity?.email || '';
+    
+    return (
+        <ShadcnSidebarFooter>
+            <SidebarMenu>
+                <SidebarMenuItem>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <SidebarMenuButton
+                                size="lg"
+                                className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                            >
+                                <UserAvatar className="h-8 w-8 rounded-lg" />
+                                <div className="grid flex-1 text-left text-sm leading-tight">
+                                    <span className="truncate font-semibold">{name}</span>
+                                    <span className="truncate text-xs">{email}</span>
+                                </div>
+                                <ChevronsUpDown className="ml-auto size-4" />
+                            </SidebarMenuButton>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                            className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                            side={isMobile ? "bottom" : "right"}
+                            align="end"
+                            sideOffset={4}
+                        >
+                            <div className="flex items-center gap-2 px-2 py-1.5 text-left text-sm">
+                                <UserAvatar className="h-8 w-8 rounded-lg" />
+                                <div className="grid flex-1 text-left text-sm leading-tight">
+                                    <span className="truncate font-semibold">{name}</span>
+                                    <span className="truncate text-xs">{email}</span>
+                                </div>
+                            </div>
+                            <DropdownMenuSeparator />
+                             <DropdownMenuItem>
+                                <Settings className="mr-2 h-4 w-4" />
+                                Account Settings
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => logout()}>
+                                <LogOutIcon className="mr-2 h-4 w-4" />
+                                Log out
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </SidebarMenuItem>
+            </SidebarMenu>
+        </ShadcnSidebarFooter>
+    );
 }
 
-type IconProps = {
-  icon: React.ReactNode;
-  isSelected?: boolean;
-};
-
-function ItemIcon({ icon, isSelected }: IconProps) {
-  return (
-    <div
-      className={cn("w-4", {
-        "text-muted-foreground": !isSelected,
-        "text-sidebar-primary-foreground": isSelected,
-      })}
-    >
-      {icon ?? <ListIcon />}
-    </div>
-  );
-}
-
-type SidebarButtonProps = React.ComponentProps<typeof Button> & {
-  item: TreeMenuItem;
-  isSelected?: boolean;
-  rightIcon?: React.ReactNode;
-  asLink?: boolean;
-  onClick?: () => void;
-};
-
-function SidebarButton({
-  item,
-  isSelected = false,
-  rightIcon,
-  asLink = false,
-  className,
-  onClick,
-  ...props
-}: SidebarButtonProps) {
-  const Link = useLink();
-
-  const buttonContent = (
-    <>
-      <ItemIcon icon={item.meta?.icon ?? item.icon} isSelected={isSelected} />
-      <span
-        className={cn("tracking-[-0.00875rem]", {
-          "flex-1": rightIcon,
-          "text-left": rightIcon,
-          "line-clamp-1": !rightIcon,
-          truncate: !rightIcon,
-          "font-normal": !isSelected,
-          "font-semibold": isSelected,
-          "text-sidebar-primary-foreground": isSelected,
-          "text-foreground": !isSelected,
-        })}
-      >
-        {getDisplayName(item)}
-      </span>
-      {rightIcon}
-    </>
-  );
-
-  return (
-    <Button
-      asChild={!!(asLink && item.route)}
-      variant="ghost"
-      size="lg"
-      className={cn(
-        "flex w-full items-center justify-start gap-2 py-2 !px-3 text-sm",
-        {
-          "bg-sidebar-primary": isSelected,
-          "hover:!bg-sidebar-primary/90": isSelected,
-          "text-sidebar-primary-foreground": isSelected,
-          "hover:text-sidebar-primary-foreground": isSelected,
-        },
-        className
-      )}
-      onClick={onClick}
-      {...props}
-    >
-      {asLink && item.route ? (
-        <Link to={item.route} className={cn("flex w-full items-center gap-2")}>
-          {buttonContent}
-        </Link>
-      ) : (
-        buttonContent
-      )}
-    </Button>
-  );
+// Helper
+function ItemIcon({ icon, isSelected }: { icon: React.ReactNode; isSelected: boolean }) {
+    return (
+        <div className={cn("w-4 h-4 mr-2", isSelected ? "text-sidebar-primary-foreground" : "text-muted-foreground")}>
+          {icon ?? <ListIcon className="w-4 h-4" />}
+        </div>
+    );
 }
 
 Sidebar.displayName = "Sidebar";

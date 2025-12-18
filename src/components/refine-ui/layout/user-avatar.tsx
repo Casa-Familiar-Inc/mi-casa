@@ -12,17 +12,21 @@ type User = {
   avatar?: string;
 };
 
-export function UserAvatar() {
+interface UserAvatarProps {
+  className?: string;
+}
+
+export function UserAvatar({ className }: UserAvatarProps) {
   const { data: user, isLoading: userIsLoading } = useGetIdentity<User>();
 
   if (userIsLoading || !user) {
-    return <Skeleton className={cn("h-10", "w-10", "rounded-full")} />;
+    return <Skeleton className={cn("h-10", "w-10", "rounded-full", className)} />;
   }
 
   const { fullName, avatar } = user;
 
   return (
-    <Avatar className={cn("h-10", "w-10")}>
+    <Avatar className={cn("h-10", "w-10", className)}>
       {avatar && <AvatarImage src={avatar} alt={fullName} />}
       <AvatarFallback>{getInitials(fullName)}</AvatarFallback>
     </Avatar>
