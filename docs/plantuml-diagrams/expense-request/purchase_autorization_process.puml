@@ -1,0 +1,41 @@
+@startuml
+title EventStorming: Proceso de Autorización Previa (Casa Familiar)
+
+skinparam shadow isolation
+skinparam component {
+  BackgroundColor<<DomainEvent>> #FF9F00
+  BackgroundColor<<Command>> #00BFFF
+  BackgroundColor<<Policy>> #E0B0FF
+  BackgroundColor<<Actor>> #FFFF00
+}
+
+node "Fase de Intención" {
+  [Solicitante] <<Actor>> as A1
+  [Solicitar Compra] <<Command>> as C1
+  [Petición De Compra Creada] <<DomainEvent>> as E1
+  A1 -> C1
+  C1 -> E1
+}
+
+node "Fase de Validación" {
+  [CFO / Supervisor] <<Actor>> as A2
+  [Evaluar Presupuesto] <<Command>> as C2
+  [Política: ¿Hay Fondos?] <<Policy>> as P1
+  [Compra Autorizada] <<DomainEvent>> as E2
+  [Compra Rechazada] <<DomainEvent>> as E3
+  
+  E1 -> C2
+  A2 -> C2
+  C2 -> P1
+  P1 -> E2 : Si hay fondos
+  P1 -> E3 : Si no hay fondos
+}
+
+node "Fase de Ejecución" {
+  [Efectuar Compra Física] <<Command>> as C3
+  [Factura / Recibo Cargado] <<DomainEvent>> as E4
+  
+  E2 -> C3
+  C3 -> E4
+}
+@enduml

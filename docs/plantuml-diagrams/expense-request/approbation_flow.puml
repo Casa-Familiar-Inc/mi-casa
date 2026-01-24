@@ -1,0 +1,50 @@
+@startuml
+' Flujo de Aprobación con Invariante Crítica de $2,000
+skinparam boxPadding 10
+skinparam sequenceMessageAlign center
+
+title Flujo de Aprobación de Gastos - Casa Familiar
+
+actor Solicitante as S
+actor Supervisor as SV
+actor CFO as CFO <<Experto de Dominio>>
+participant SolicitudDeGasto as AR <<Aggregate Root>>
+database EventStore as ES <<Fuente de Verdad>>
+
+== 1. Creación de Solicitud (Total: $2,500) ==
+S -> AR: Ejecutar(EnviarSolicitudCmd)
+activate AR
+AR -> AR: Validar Invariantes
+AR -> ES: Guardar: SolicitudCreada(ID, Total)
+note right: Estado: CREADA
+deactivate AR
+
+== 2. Aprobación del Supervisor ==
+SV -> AR: Ejecutar(AprobarSupervisorCmd)
+activate AR
+note over AR: Verifica "genuine program purposes"
+AR -> ES: Guardar: SolicitudAprobadaSupervisor(ID)
+note right: Estado: PENDIENTE_CFO
+deactivate AR
+
+== 3. Validación de Regla Crítica ($2,000) ==
+CFO -> AR: Ejecutar(AprobarCFOCmd)
+activate AR
+note over AR: Política: ¿Monto ($2,500) > $2,000?
+
+alt #FFE5E5 Si Total > $2,000
+    AR -> AR: **Requerir Firma CEO**
+    AR -> ES: Guardar: SolicitudPendienteCEO(ID)
+    
+    actor CEO <<Aprobador Final>>
+    CEO -> AR: Ejecutar(AprobarCEOCmd)
+    AR -> ES: Guardar: SolicitudAprobadaPorCEO(ID)
+    note right: Estado: APROBADA
+
+else #E5FFE5 Si Total <= $2,000
+    AR -> ES: Guardar: SolicitudAprobadaCFO(ID)
+    note right: Estado: APROBADA
+end
+
+deactivate AR
+@enduml

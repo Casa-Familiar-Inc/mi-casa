@@ -1,0 +1,70 @@
+@startuml
+' Estructura del Agregado de Solicitud de Gasto - Casa Familiar
+skinparam style strict
+skinparam PackageBackgroundColor #EEF2F7
+skinparam ClassBackgroundColor #FFFFFF
+skinparam ClassBorderColor #2C3E50
+skinparam ClassHeaderBackgroundColor #2C3E50
+skinparam ClassHeaderFontColor #FFFFFF
+
+package "Bounded Context: Gestión de Gastos" {
+
+    note "Este es nuestro Bounded Context.\nLa consistencia del lenguaje es vital aquí." as N1
+
+    class SolicitudDeGasto <<Aggregate Root>> {
+        + SolicitudId : UUID
+        + Estado : RequestStatus
+        -- Atributos --
+        - Solicitante : String
+        - Departamento : String
+        - Proposito : String
+        - InfoProveedor : InfoProveedor
+        - Total : Monto
+        -- Comportamiento (Comandos) --
+        + Ejecutar(EnviarSolicitudCmd)
+        + Ejecutar(AprobarSupervisorCmd)
+        + Ejecutar(AprobarCFOCmd)
+        + EmitirEvento(EventoDominio)
+    }
+
+    class DetalleGasto <<Entity>> {
+        + Descripcion : String
+        + MontoLinea : Monto
+        + ClasificacionContable : CodigoCuenta
+    }
+
+    class CodigoCuenta <<Value Object>> {
+        + CodigoFondo : String
+        + CodigoActividad : String
+        + EsValidoSegunQuickBooks() : Boolean
+    }
+
+    class Monto <<Value Object>> {
+        + Valor : Decimal
+        + Moneda : String
+        -- Regla de Negocio --
+        + SuperaUmbralCEO(Umbral: 2000) : Boolean
+    }
+
+    class InfoProveedor <<Value Object>> {
+        + Nombre : String
+        + Contacto : String
+        + TipoPago : PaymentType
+    }
+
+    enum RequestStatus <<Value Object>> {
+        CREADA
+        PENDIENTE
+        APROBADA
+        PAGADA
+        RECHAZADA
+    }
+
+    SolicitudDeGasto "1" *-- "1..*" DetalleGasto : Contiene
+    SolicitudDeGasto "1" *-- "1" Monto : SumaTotal
+    SolicitudDeGasto "1" *-- "1" RequestStatus : tiene
+    DetalleGasto "1" *-- "1" Monto : Valor
+    DetalleGasto "1" *-- "1" CodigoCuenta : Clasificación
+    SolicitudDeGasto "1" *-- "1" InfoProveedor : PagoA
+}
+@enduml

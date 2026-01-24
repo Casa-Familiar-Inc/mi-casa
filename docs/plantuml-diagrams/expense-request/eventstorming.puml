@@ -1,0 +1,69 @@
+@startuml
+title EventStorming: Ciclo de Vida de Solicitud de Gasto (Casa Familiar)
+
+' Definición de estilos para simular post-its
+skinparam shadow isolation
+skinparam component {
+  BackgroundColor<<DomainEvent>> #FF9F00
+  BackgroundColor<<Command>> #00BFFF
+  BackgroundColor<<Policy>> #E0B0FF
+  BackgroundColor<<Actor>> #FFFF00
+  BackgroundColor<<ReadModel>> #90EE90
+}
+
+header Bounded Context: Expense Management
+footer Basado en Reglas de Negocio Rev. 2024
+
+' --- LÍNEA DE TIEMPO ---
+
+node "Intención de Gasto" {
+  [Registrar Datos] <<Command>> as C1
+  [Solicitante] <<Actor>> as A1
+  [Solicitud Creada] <<DomainEvent>> as E1
+  A1 -down-> C1
+  C1 -down-> E1
+}
+
+node "Certificación" {
+  [Enviar a Revisión] <<Command>> as C2
+  [Política: Certificación Legal] <<Policy>> as P1
+  [Solicitud Enviada] <<DomainEvent>> as E2
+  E1 -right-> C2
+  C2 -down-> P1
+  P1 -down-> E2
+}
+
+node "Aprobación Programática" {
+  [Aprobar (Supervisor)] <<Command>> as C3
+  [Supervisor] <<Actor>> as A2
+  [Aprobación Supervisor Otorgada] <<DomainEvent>> as E3
+  E2 -right-> C3
+  A2 -down-> C3
+  C3 -down-> E3
+}
+
+node "Validación Financiera y Regla Crítica" {
+  [Validar y Clasificar] <<Command>> as C4
+  [CFO] <<Actor>> as A3
+  [Política: Umbral > $2,000] <<Policy>> as P2
+  [Firma CEO Requerida] <<DomainEvent>> as E4
+  [Aprobación CFO Otorgada] <<DomainEvent>> as E5
+  
+  E3 -right-> C4
+  A3 -down-> C4
+  C4 -down-> P2
+  P2 -down-> E4 : Si Total > 2000
+  P2 -down-> E5 : Si Total <= 2000
+}
+
+node "Cierre" {
+  [Registrar Pago] <<Command>> as C5
+  [Contador] <<Actor>> as A4
+  [Pago Registrado en QuickBooks] <<DomainEvent>> as E6
+  
+  E4 -right-> C5 : (Tras firma CEO)
+  E5 -right-> C5
+  A4 -down-> C5
+  C5 -down-> E6
+}
+@enduml

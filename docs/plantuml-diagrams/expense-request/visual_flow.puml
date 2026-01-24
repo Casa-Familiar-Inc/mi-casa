@@ -1,0 +1,31 @@
+@startuml
+skinparam handwritten false
+skinparam defaultFontName "Segoe UI"
+
+box "Usuario / Intención" #DAE8FC
+    actor Solicitante
+    control "Comando" as C #00BFFF
+end box
+
+box "Corazón del Dominio" #D5E8D4
+    participant "Aggregate Root\n(El Validador)" as AR
+    participant "Invariantes\n(Reglas)" as R
+end box
+
+box "Resultado / Historia" #FF9F00
+    collections "Evento de Dominio" as E #FF9F00
+end box
+
+Solicitante -> C : 1. SolicitarCompra(Escritorio, $300)
+note left: **COMANDO**\n(Imperativo)
+
+C -> AR : Envía orden
+activate AR
+AR -> R : 2. ¿Presupuesto disponible?
+R -> AR : Sí, validación exitosa
+note over AR, R: **VALIDACIÓN**\n(Lógica interna)
+
+AR -> E : 3. CompraSolicitada
+deactivate AR
+note right: **EVENTO**\n(Pasado)
+@enduml

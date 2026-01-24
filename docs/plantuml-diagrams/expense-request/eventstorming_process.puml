@@ -1,0 +1,62 @@
+@startuml
+title EventStorming: Proceso de Adquisición por Ergonomía (Casa Familiar)
+
+' Definición de estilos para simular post-its
+skinparam shadow isolation
+skinparam component {
+  BackgroundColor<<DomainEvent>> #FF9F00
+  BackgroundColor<<Command>> #00BFFF
+  BackgroundColor<<Policy>> #E0B0FF
+  BackgroundColor<<Actor>> #FFFF00
+  BackgroundColor<<ExternalSystem>> #A9A9A9
+}
+
+header Bounded Context: Expense Management
+footer Flujo: De la Necesidad de HR a la Autorización Final
+
+' --- LÍNEA DE TIEMPO ---
+
+node "1. Estímulo Externo" {
+  [HR] <<Actor>> as HR
+  note right of HR: "Necesitamos un escritorio\nergonómico para este puesto"
+}
+
+node "2. Preparación (Tu Trabajo)" {
+  [Tú (Software Engineer)] <<Actor>> as ME
+  [Buscar Escritorio y Proveedor] <<Command>> as C1
+  [Datos de Compra Recopilados] <<DomainEvent>> as E1
+  ME -down-> C1
+  C1 -down-> E1
+}
+
+node "3. Creación en el Sistema" {
+  [Crear Expense Request] <<Command>> as C2
+  [Política: Validación de Justificación] <<Policy>> as P1
+  [Solicitud Creada] <<DomainEvent>> as E2
+  
+  E1 -right-> C2
+  C2 -down-> P1
+  P1 -down-> E2 : Justificación: "Pedido HR"
+}
+
+node "4. Proceso de Aprobación" {
+  [CFO / Supervisor] <<Actor>> as CFO
+  [Aprobar Solicitud] <<Command>> as C3
+  [Política: ¿Excede $2,000?] <<Policy>> as P2
+  
+  [Compra Autorizada] <<DomainEvent>> as E3
+  [Firma CEO Requerida] <<DomainEvent>> as E4
+
+  E2 -right-> C3
+  CFO -down-> C3
+  C3 -down-> P2
+  P2 -down-> E3 : Si <= 2000
+  P2 -down-> E4 : Si > 2000
+}
+
+node "5. Ejecución" {
+  [Notificar a Solicitante] <<ExternalSystem>> as SYS
+  E3 -right-> SYS : "Puedes comprarlo"
+}
+
+@enduml
