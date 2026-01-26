@@ -1,4 +1,3 @@
-import pb from "../pocketbase";
 import {
     HR_TimeSheetHeader,
     HR_TimeSheetLog,
@@ -6,8 +5,10 @@ import {
     HR_EmployeeSettings,
     TimeSheetFull
 } from "../types/timesheet";
-
 import { AuditService } from "./AuditService";
+import { authClient } from "../lib/auth";
+
+const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
 
 export const TimeSheetService = {
 
@@ -15,142 +16,62 @@ export const TimeSheetService = {
         data: TimeSheetFull,
         userEmail: string
     ): Promise<string> {
-        // --- ATOMIC BATCH OPERATION ---
-        const batch = pb.createBatch();
-
-        // 1. Prepare Header ID
         let headerId = data.header.id;
-        let isNew = false;
+        let isNew = !headerId;
         let oldStatus = '';
 
         if (headerId) {
-            // Fetch old header to check status change (for Audit)
-            // We do this OUTSIDE the batch because it's a read.
             try {
-                const old = await pb.collection('HR_TimeSheetHeaders').getOne(headerId);
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                oldStatus = (old as any).status;
+                const response = await fetch(`${API_BASE}/timesheets/${headerId}`, { credentials: 'include' });
+                if (response.ok) {
+                    const old = await response.json();
+                    oldStatus = old.status;
+                }
             } catch (e) { /* ignore */ }
-
-            // Update Header in Batch
-            batch.collection('HR_TimeSheetHeaders').update(headerId, {
-                ...data.header,
-                // employee_email: userEmail // Keep existing email
-            });
-
-        } else {
-            isNew = true;
-            // Generate Client-Side ID (15 chars alphanumeric) for Atomicity
-            // PocketBase IDs: 15 chars, [a-z0-9]
-            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-            headerId = '';
-            for (let i = 0; i < 15; i++) {
-                headerId += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-
-            // Create Header in Batch with explicit ID
-            batch.collection('HR_TimeSheetHeaders').create({
-                ...data.header,
-                id: headerId, // EXPLICIT ID
-                employee_email: userEmail
-            });
         }
 
-        // 2. Manage Logs (Delete old, Create new)
-        // Read existing logs to know what to delete (Read before Write)
-        const existingLogs = await pb.collection('HR_TimeSheetLogs').getFullList({
-            filter: `header = "${headerId}"`,
-            requestKey: null // Safety
-        }).catch(() => []);
-        // Note: New header won't have existing logs, so empty list is fine.
+        // The new backend should handle the batch/atomic operation in a single endpoint
+        const { header, logs, compTime } = data;
+        const payload = {
+            ...header,
+            logs,
+            compTime,
+            employee_email: userEmail
+        };
 
-        // Queue Deletes
-        existingLogs.forEach(log => {
-            batch.collection('HR_TimeSheetLogs').delete(log.id);
+        const response = await fetch(`${API_BASE}/timesheets${headerId ? `/${headerId}` : ''}`, {
+            method: headerId ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: 'include',
+            body: JSON.stringify(payload),
         });
 
-        // Queue Creates
-        data.logs.forEach(log => {
-            batch.collection('HR_TimeSheetLogs').create({
-                ...log,
-                header: headerId
-            });
-        });
-
-        // 3. Manage Comp Time (Delete old, Create new)
-        const existingComp = await pb.collection('HR_CompTimeEntries').getFullList({
-            filter: `header = "${headerId}"`,
-            requestKey: null
-        }).catch(() => []);
-
-        // Queue Deletes
-        existingComp.forEach(comp => {
-            batch.collection('HR_CompTimeEntries').delete(comp.id);
-        });
-
-        // Queue Creates
-        data.compTime.forEach(comp => {
-            if (comp.date || comp.rationale) {
-                batch.collection('HR_CompTimeEntries').create({
-                    ...comp,
-                    header: headerId
-                });
-            }
-        });
-
-        try {
-            // EXECUTE BATCH
-            await batch.send();
-
-            // AUDIT LOG (Only if batch succeeds)
-            const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
-
-            // We run audit log separately. If audit fails, main data is still safe.
-            AuditService.log({
-                target_collection: 'HR_TimeSheetHeaders',
-                target_id: headerId,
-                action_type: action,
-                details: { status: data.header.status, user_email: userEmail }
-            }).catch(console.error);
-
-            return headerId;
-
-        } catch (error) {
-            console.error("Error saving timesheet (Batch Failed):", error);
-            throw error; // Propagate error to UI so user knows save failed
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || "Failed to save timesheet");
         }
+
+        const result = await response.json();
+        const savedId = result.id || headerId;
+
+        const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
+
+        AuditService.log({
+            target_collection: 'HR_TimeSheetHeaders',
+            target_id: savedId,
+            action_type: action,
+            details: { status: data.header.status, user_email: userEmail }
+        }).catch(console.error);
+
+        return savedId;
     },
 
     async getTimeSheet(employeeEmail: string, periodStart: string): Promise<TimeSheetFull | null> {
         try {
-            // Find Header
-            const headers = await pb.collection('HR_TimeSheetHeaders').getList<HR_TimeSheetHeader>(1, 1, {
-                filter: `employee_email = "${employeeEmail}" && period_start = "${periodStart}"`,
-                expand: 'HR_TimeSheetLogs(header),HR_CompTimeEntries(header)' // Reverse expansion
-            });
-
-            if (headers.items.length === 0) {
-                return null;
-            }
-
-            const header = headers.items[0];
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const expanded = header.expand as any;
-
-            const logs: HR_TimeSheetLog[] = expanded['HR_TimeSheetLogs(header)'] || [];
-            const compTime: HR_CompTimeEntry[] = expanded['HR_CompTimeEntries(header)'] || [];
-
-            // Sort logs by date? 
-            // Logs usually need to be ordered. PnP implementation ordered them by insertion? 
-            // Better to sort by date.
-            logs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            return {
-                header,
-                logs,
-                compTime
-            };
-
+            const response = await fetch(`${API_BASE}/timesheets?employee_email=${employeeEmail}&period_start=${periodStart}`, { credentials: 'include' });
+            if (!response.ok) return null;
+            const items = await response.json();
+            return items.length > 0 ? items[0] : null; // Backend should return expanded object
         } catch (error) {
             console.error("Error fetching timesheet:", error);
             return null;
@@ -159,10 +80,9 @@ export const TimeSheetService = {
 
     async getMyTimeSheets(email: string): Promise<HR_TimeSheetHeader[]> {
         try {
-            return await pb.collection('HR_TimeSheetHeaders').getFullList({
-                filter: `employee_email = "${email}"`,
-                sort: '-period_start',
-            });
+            const response = await fetch(`${API_BASE}/timesheets?employee_email=${email}&_sort=-period_start`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
         } catch (error) {
             console.error("Error fetching my timesheets:", error);
             return [];
@@ -176,21 +96,21 @@ export const TimeSheetService = {
         }
 
         try {
-            const header = await pb.collection('HR_TimeSheetHeaders').create({
-                employee_email: email,
-                employee_name: user,
-                period_start: start,
-                period_end: end,
-                status: 'Draft',
-                total_hours: 0,
-                additional_info: '',
-                employee_signed_by: '',
-                employee_signed_date: '',
-                supervisor_signed_by: '',
-                supervisor_signed_date: ''
+            const response = await fetch(`${API_BASE}/timesheets`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    employee_email: email,
+                    employee_name: user,
+                    period_start: start,
+                    period_end: end,
+                    status: 'Draft',
+                    total_hours: 0,
+                }),
             });
+            const header = await response.json();
 
-            // AUDIT
             await AuditService.log({
                 target_collection: 'HR_TimeSheetHeaders',
                 target_id: header.id,
@@ -207,19 +127,9 @@ export const TimeSheetService = {
 
     async getTimeSheetById(id: string): Promise<TimeSheetFull | null> {
         try {
-            const header = await pb.collection('HR_TimeSheetHeaders').getOne<HR_TimeSheetHeader>(id, {
-                expand: 'HR_TimeSheetLogs(header),HR_CompTimeEntries(header)',
-                requestKey: null // Disable auto-cancellation
-            });
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const expanded = header.expand as any;
-            const logs: HR_TimeSheetLog[] = expanded['HR_TimeSheetLogs(header)'] || [];
-            const compTime: HR_CompTimeEntry[] = expanded['HR_CompTimeEntries(header)'] || [];
-
-            logs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-            return { header, logs, compTime };
+            const response = await fetch(`${API_BASE}/timesheets/${id}`, { credentials: 'include' });
+            if (!response.ok) return null;
+            return await response.json();
         } catch (error) {
             console.error("Error fetching timesheet by ID:", error);
             return null;
@@ -228,40 +138,17 @@ export const TimeSheetService = {
 
     async getSubmittedTimeSheets(statuses: string[] = ['Submitted']): Promise<HR_TimeSheetHeader[]> {
         try {
-            // Filter by statuses provided
-            const statusFilter = statuses.map(s => `status = "${s}"`).join(' || ');
-            let filter = `(${statusFilter})`;
+            const { data: session } = await authClient.getSession();
+            const directReports: string[] = (session?.user as any)?.directReports || [];
 
-            // Secure Logic:
-            // 1. Get current logged-in user
-            const currentUser = pb.authStore.record;
-            // 2. Read 'direct_reports' from their record (synced from Graph)
-            // It's a JSON field, so it comes back as an array of strings
-            const directReports: string[] = (currentUser as any)?.direct_reports || [];
+            if (directReports.length === 0) return [];
 
-            if (directReports.length > 0) {
-                // Construct OR filter: (employee_email = "a" || employee_email = "b" ...)
-                const emailFilters = directReports
-                    .map(email => `employee_email = "${email}"`)
-                    .join(' || ');
+            const statusQuery = statuses.map(s => `status=${s}`).join('&');
+            const reportsQuery = directReports.map(email => `employee_email=${email}`).join('&');
 
-                filter += ` && (${emailFilters})`;
-            } else {
-                // If user has no direct reports (and is trying to view dashboard), 
-                // arguably they shouldn't see anything, or only their own?
-                // For a "Supervisor Dashboard", if you have no one, you see nothing.
-                // We'll return empty immediately to save a call.
-                return [];
-            }
-
-            console.log("Supervisor Debug - Reports:", directReports);
-            console.log("Supervisor Debug - Filter:", filter);
-
-            return await pb.collection('HR_TimeSheetHeaders').getFullList({
-                filter: filter,
-                sort: '-period_start',
-                requestKey: null // Disable auto-cancellation
-            });
+            const response = await fetch(`${API_BASE}/timesheets?${statusQuery}&${reportsQuery}&_sort=-period_start`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
         } catch (error) {
             console.error("Error fetching submitted timesheets:", error);
             return [];
@@ -270,10 +157,10 @@ export const TimeSheetService = {
 
     async getUserSettings(email: string): Promise<HR_EmployeeSettings | null> {
         try {
-            const result = await pb.collection('HR_EmployeeSettings').getList<HR_EmployeeSettings>(1, 1, {
-                filter: `user_email = "${email}"`
-            });
-            return result.items.length > 0 ? result.items[0] : null;
+            const response = await fetch(`${API_BASE}/employees/settings?user_email=${email}`, { credentials: 'include' });
+            if (!response.ok) return null;
+            const items = await response.json();
+            return items.length > 0 ? items[0] : null;
         } catch (error) {
             return null;
         }
@@ -282,37 +169,32 @@ export const TimeSheetService = {
     async saveUserSettings(settings: HR_EmployeeSettings): Promise<void> {
         try {
             const existing = await this.getUserSettings(settings.user_email);
-            if (existing) {
-                await pb.collection('HR_EmployeeSettings').update(existing.id, settings);
-            } else {
-                await pb.collection('HR_EmployeeSettings').create(settings);
-            }
+            const response = await fetch(`${API_BASE}/employees/settings${existing ? `/${existing.id}` : ''}`, {
+                method: existing ? "PATCH" : "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify(settings),
+            });
+            if (!response.ok) throw new Error("Failed to save settings");
         } catch (error) {
             console.error("Error saving user settings:", error);
             throw error;
         }
     },
 
-    async sendEmail(to: string[], subject: string, body: string): Promise<void> {
-        // STUB: Real implementation would use a server-side hook or an external provider.
-        // For migrating, we log this desire to send.
-        console.log(`[TimeSheetService] MOCK SEND EMAIL:
-         To: ${to.join(', ')}
-         Subject: ${subject}
-         Body: ${body}
-         `);
-        return Promise.resolve();
-    },
-
     async approveTimeSheet(headerId: string, supervisorName: string): Promise<void> {
         try {
-            await pb.collection('HR_TimeSheetHeaders').update(headerId, {
-                status: 'Approved',
-                supervisor_signed_by: supervisorName,
-                supervisor_signed_date: new Date().toLocaleString()
+            await fetch(`${API_BASE}/timesheets/${headerId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    status: 'Approved',
+                    supervisor_signed_by: supervisorName,
+                    supervisor_signed_date: new Date().toLocaleString()
+                }),
             });
 
-            // AUDIT
             await AuditService.log({
                 target_collection: 'HR_TimeSheetHeaders',
                 target_id: headerId,
@@ -328,14 +210,18 @@ export const TimeSheetService = {
 
     async rejectTimeSheet(headerId: string, reason: string): Promise<void> {
         try {
-            await pb.collection('HR_TimeSheetHeaders').update(headerId, {
-                status: 'Rejected',
-                supervisor_signed_by: '',
-                employee_signed_by: '',
-                employee_signed_date: ''
+            await fetch(`${API_BASE}/timesheets/${headerId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    status: 'Rejected',
+                    supervisor_signed_by: '',
+                    employee_signed_by: '',
+                    employee_signed_date: ''
+                }),
             });
 
-            // AUDIT
             await AuditService.log({
                 target_collection: 'HR_TimeSheetHeaders',
                 target_id: headerId,

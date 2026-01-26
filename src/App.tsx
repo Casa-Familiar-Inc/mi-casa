@@ -17,7 +17,7 @@ import routerProvider, {
   NavigateToResource,
   UnsavedChangesNotifier,
 } from "@refinedev/react-router";
-import { dataProvider, liveProvider } from "refine-pocketbase";
+import dataProvider from "@refinedev/simple-rest";
 import { BrowserRouter, Outlet, Route, Routes } from "react-router";
 import "./App.css";
 import { ErrorComponent } from "./components/refine-ui/layout/error-component";
@@ -39,19 +39,22 @@ import { TimeOffPage } from "./modules/hr/time-off/page";
 import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { useState, useEffect } from "react";
-import pb from "./pocketbase";
+import { authClient } from "./lib/auth";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 
+const API_URL = import.meta.env.VITE_API_URL + "/api";
+
 function App() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [isSupervisor, setIsSupervisor] = useState(!!(pb.authStore.record as any)?.is_supervisor);
+  const [isSupervisor, setIsSupervisor] = useState(false);
+  const { data: session } = authClient.useSession();
 
   useEffect(() => {
-    return pb.authStore.onChange((_token, model) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      setIsSupervisor(!!(model as any)?.is_supervisor);
-    });
-  }, []);
+    if (session?.user) {
+      setIsSupervisor(!!(session.user as any)?.isSupervisor);
+    } else {
+      setIsSupervisor(false);
+    }
+  }, [session]);
 
   const resources = [
     {
@@ -63,25 +66,11 @@ function App() {
       }
     },
     {
-      name: "IT_Category",
-      list: "/it-category",
-      create: "/it-category/create",
-      edit: "/it-category/edit/:id",
-      show: "/it-category/show/:id",
+      name: "loans",
+      list: "/loans",
       meta: {
-        label: "Categories",
+        label: "Loans",
         icon: <Tags className="h-4 w-4" />
-      },
-    },
-    {
-      name: "IT_Manufacturer",
-      list: "/it-manufacturer",
-      create: "/it-manufacturer/create",
-      edit: "/it-manufacturer/edit/:id",
-      show: "/it-manufacturer/show/:id",
-      meta: {
-        label: "Manufacturers",
-        icon: <Factory className="h-4 w-4" />
       },
     },
     {
@@ -128,19 +117,15 @@ function App() {
         <ThemeProvider>
           <DevtoolsProvider>
             <Refine
-              dataProvider={dataProvider(pb)}
-              liveProvider={liveProvider(pb)}
+              dataProvider={dataProvider(API_URL)}
               authProvider={combinedAuthProvider}
               notificationProvider={useNotificationProvider()}
               routerProvider={routerProvider}
               resources={resources}
               accessControlProvider={{
                 can: async ({ resource }) => {
-                  // Fallback security, though resource won't exist in menu if hidden
                   if (resource === "Supervisor") {
-                    const user = pb.authStore.record;
-                    const isSup = (user as any)?.is_supervisor || false;
-                    return { can: isSup };
+                    return { can: isSupervisor };
                   }
                   return { can: true };
                 }

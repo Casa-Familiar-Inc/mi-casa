@@ -1,6 +1,7 @@
-import pb from "../pocketbase";
 import { HR_TimeOffRequest } from "../types/timeoff";
 import { AuditService } from "./AuditService";
+
+const API_URL = `${import.meta.env.VITE_API_URL}/api/time-off`;
 
 export const TimeOffService = {
     async saveRequest(data: Partial<HR_TimeOffRequest>, userEmail: string): Promise<string> {
@@ -10,18 +11,32 @@ export const TimeOffService = {
 
         if (requestId) {
             try {
-                const old = await pb.collection('HR_TimeOffRequests').getOne(requestId);
-                oldStatus = (old as any).status;
+                const response = await fetch(`${API_URL}/${requestId}`, { credentials: 'include' });
+                if (response.ok) {
+                    const old = await response.json();
+                    oldStatus = old.status;
+                }
             } catch (e) { /* ignore */ }
 
-            await pb.collection('HR_TimeOffRequests').update(requestId, data);
+            await fetch(`${API_URL}/${requestId}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify(data),
+            });
         } else {
             isNew = true;
-            const record = await pb.collection('HR_TimeOffRequests').create({
-                ...data,
-                employee_email: userEmail,
-                status: data.status || 'Draft'
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    ...data,
+                    employee_email: userEmail,
+                    status: data.status || 'Draft'
+                }),
             });
+            const record = await response.json();
             requestId = record.id;
         }
 
@@ -29,17 +44,19 @@ export const TimeOffService = {
 
         AuditService.log({
             target_collection: 'HR_TimeOffRequests',
-            target_id: requestId,
+            target_id: requestId!,
             action_type: action,
             details: { status: data.status, user_email: userEmail }
         }).catch(console.error);
 
-        return requestId;
+        return requestId!;
     },
 
     async getRequestById(id: string): Promise<HR_TimeOffRequest | null> {
         try {
-            return await pb.collection('HR_TimeOffRequests').getOne<HR_TimeOffRequest>(id);
+            const response = await fetch(`${API_URL}/${id}`, { credentials: 'include' });
+            if (!response.ok) return null;
+            return await response.json();
         } catch (error) {
             console.error("Error fetching time off request by ID:", error);
             return null;
@@ -48,10 +65,9 @@ export const TimeOffService = {
 
     async getMyRequests(email: string): Promise<HR_TimeOffRequest[]> {
         try {
-            return await pb.collection('HR_TimeOffRequests').getFullList({
-                filter: `employee_email = "${email}"`,
-                sort: '-created',
-            });
+            const response = await fetch(`${API_URL}?employee_email=${email}&_sort=-created`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
         } catch (error) {
             console.error("Error fetching my time off requests:", error);
             return [];
@@ -60,11 +76,9 @@ export const TimeOffService = {
 
     async getPendingRequests(): Promise<HR_TimeOffRequest[]> {
         try {
-            // Similar supervisor logic as in TimeSheetService could be added here
-            return await pb.collection('HR_TimeOffRequests').getFullList({
-                filter: `status = "Pending"`,
-                sort: '-created',
-            });
+            const response = await fetch(`${API_URL}?status=Pending&_sort=-created`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
         } catch (error) {
             console.error("Error fetching pending time off requests:", error);
             return [];
@@ -73,12 +87,10 @@ export const TimeOffService = {
 
     async getApprovedRequestsByPeriod(email: string, start: string, end: string): Promise<HR_TimeOffRequest[]> {
         try {
-            // Filter: Approved status AND employee email AND overlap with period
-            // Overlap logic: (RequestStart <= PeriodEnd) AND (RequestEnd >= PeriodStart)
-            const filter = `status = "Approved" && employee_email = "${email}" && start_date <= "${end}" && end_date >= "${start}"`;
-            return await pb.collection('HR_TimeOffRequests').getFullList({
-                filter: filter,
-            });
+            // Simplified filter for the REST API
+            const response = await fetch(`${API_URL}?status=Approved&employee_email=${email}&start_date_lte=${end}&end_date_gte=${start}`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
         } catch (error) {
             console.error("Error fetching approved time off requests by period:", error);
             return [];

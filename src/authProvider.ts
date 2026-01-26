@@ -1,10 +1,24 @@
 import { AuthProvider } from "@refinedev/core";
-import pb from "./pocketbase";
+import { signIn, signOut, authClient } from "./lib/auth";
 
 export const adminAuthProvider: AuthProvider = {
     login: async ({ email, password }) => {
         try {
-            await pb.admins.authWithPassword(email, password);
+            const { error } = await signIn.email({
+                email,
+                password,
+            });
+
+            if (error) {
+                return {
+                    success: false,
+                    error: {
+                        name: "LoginError",
+                        message: error.message || "Invalid email or password",
+                    },
+                };
+            }
+
             return {
                 success: true,
                 redirectTo: "/",
@@ -20,15 +34,15 @@ export const adminAuthProvider: AuthProvider = {
         }
     },
     logout: async () => {
-        pb.authStore.clear();
+        await signOut();
         return {
             success: true,
             redirectTo: "/login",
         };
     },
     check: async () => {
-        // Updated to use isSuperuser instead of deprecated isAdmin
-        if (pb.authStore.isValid && pb.authStore.isSuperuser) {
+        const { data: session } = await authClient.getSession();
+        if (session) {
             return {
                 authenticated: true,
             };
@@ -40,16 +54,18 @@ export const adminAuthProvider: AuthProvider = {
         };
     },
     getPermissions: async () => {
-        // Admins usually have full permissions
-        return ["admin"];
+        const { data: session } = await authClient.getSession();
+        // Adjust based on your session user properties
+        return (session?.user as any)?.role ? [(session?.user as any).role] : [];
     },
     getIdentity: async () => {
-        // Updated deprecated .model property to .record
-        const record = pb.authStore.record;
+        const { data: session } = await authClient.getSession();
+        if (!session) return null;
         return {
-            id: record?.id,
-            name: (record as any)?.email,
-            avatar: (record as any)?.avatar,
+            id: session.user.id,
+            name: session.user.name || session.user.email,
+            email: session.user.email,
+            avatar: session.user.image,
         };
     },
     onError: async (error) => {

@@ -1,4 +1,4 @@
-import pb from "../pocketbase";
+import { authClient } from "../lib/auth";
 
 export interface AuditLogPayload {
     target_collection: string;
@@ -10,10 +10,13 @@ export interface AuditLogPayload {
     actor_name?: string;
 }
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 export const AuditService = {
     async log(payload: AuditLogPayload): Promise<void> {
         try {
-            const user = pb.authStore.record;
+            const { data: session } = await authClient.getSession();
+            const user = session?.user;
 
             const data = {
                 target_collection: payload.target_collection,
@@ -24,12 +27,16 @@ export const AuditService = {
                 actor_name: payload.actor_name || user?.name || user?.email || 'System'
             };
 
-            await pb.collection('HR_AuditLogs').create(data);
-            // console.log("Audit Log Created:", data.action_type, data.target_id);
+            await fetch(`${API_URL}/api/audit-logs`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                credentials: 'include',
+                body: JSON.stringify(data),
+            });
 
         } catch (error) {
-            // We do not want audit logging failure to break the main application flow,
-            // but we should log it to console.
             console.error("Failed to create audit log:", error);
         }
     }

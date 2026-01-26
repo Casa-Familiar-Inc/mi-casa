@@ -39,7 +39,7 @@ import { toast } from "sonner";
 import { Settings, Download } from 'lucide-react';
 import { ActionToolbar } from '@/components/common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../../../utils/graphEmail';
-import pb from '../../../../pocketbase';
+import { authClient } from '../../../../lib/auth';
 
 interface TimeSheetContainerProps {
     userEmail?: string;
@@ -110,7 +110,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             setUserSettings(settings);
 
             // 3. Load Data
-            if (timesheetId) {
+            if (timesheetId && timesheetId !== 'undefined') {
                 // LOAD BY ID (View Mode)
                 const data = await TimeSheetService.getTimeSheetById(timesheetId);
                 if (data) {
@@ -471,11 +471,11 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                         if (manager && manager.email) managerEmail = manager.email;
                     } catch (err) { console.warn("Graph Manager Fetch Failed", err); }
 
-                    // Fallback to PB Record if Graph fails
+                    // Fallback to Session Record if Graph fails
                     if (!managerEmail) {
-                        const userRecord = pb.authStore.record;
-                        if (userRecord && (userRecord as any).manager_email) {
-                            managerEmail = (userRecord as any).manager_email;
+                        const { data: session } = await authClient.getSession();
+                        if (session?.user && (session.user as any).managerEmail) {
+                            managerEmail = (session.user as any).managerEmail;
                         }
                     }
 
@@ -635,10 +635,15 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const handleSupervisorReopen = async () => {
         if (!header) return;
         try {
-            await pb.collection('HR_TimeSheetHeaders').update(header.id, {
-                status: 'Submitted',
-                supervisor_signed_by: '',
-                supervisor_signed_date: ''
+            await fetch(`${import.meta.env.VITE_API_URL}/api/timesheets/${header.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({
+                    status: 'Submitted',
+                    supervisor_signed_by: '',
+                    supervisor_signed_date: ''
+                }),
             });
             toast.success("Timesheet Unlocked");
             // Reload page to reset state safely
@@ -782,9 +787,18 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || currentUserName}</span></div>
                     <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
                 </div>
-                <div>
-                    <div className="text-sm font-semibold text-right">Period</div>
-                    <div className="text-lg font-bold">{header?.period_start} - {header?.period_end}</div>
+                <div className="w-72">
+                    <div className="text-sm font-semibold text-right mb-1">Period Selection</div>
+                    <Select value={selectedPeriodKey} onValueChange={handlePeriodChange}>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a period" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {periods.map(p => (
+                                <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
             </div>
 
