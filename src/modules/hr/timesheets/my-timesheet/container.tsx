@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { TimeSheetService } from '../../../../services/timeSheetService';
 import { TimeUtils } from '../../../../utils/TimeUtils';
-import { 
-    HR_TimeSheetHeader, 
-    HR_TimeSheetLog, 
-    HR_CompTimeEntry, 
-    HR_EmployeeSettings 
+import {
+    HR_TimeSheetHeader,
+    HR_TimeSheetLog,
+    HR_CompTimeEntry,
+    HR_EmployeeSettings
 } from '../../../../types/timesheet';
+import { HR_TimeOffRequest } from '../../../../types/timeoff';
+import { TimeOffService } from '../../../../services/timeOffService';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { generateTimeSheetPDF } from '../../../../utils/TimeSheetPDF';
@@ -15,21 +17,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { useGetIdentity, useGo, usePermissions } from '@refinedev/core';
@@ -50,28 +52,28 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const go = useGo();
     const currentUserEmail = identity?.email || '';
     const currentUserName = identity?.name || '';
-    
+
     // Supervisor logic: Viewing someone else
 
-    
+
     // State
-    const [periods, setPeriods] = useState<{key: string, label: string, start: string, end: string}[]>([]);
+    const [periods, setPeriods] = useState<{ key: string, label: string, start: string, end: string }[]>([]);
     const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>('');
-    
+
     const [logs, setLogs] = useState<HR_TimeSheetLog[]>([]);
     const [compTimeEntries, setCompTimeEntries] = useState<HR_CompTimeEntry[]>([]);
     const [header, setHeader] = useState<HR_TimeSheetHeader | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [userSettings, setUserSettings] = useState<HR_EmployeeSettings | null>(null);
     const [additionalInfo, setAdditionalInfo] = useState('');
-    
+
     // Supervisor logic: Viewing someone else
     // If header is loaded, check the header's employee email.
     // If not loaded yet, fallback to userEmail prop (if provided).
-    const isSupervisorView = header 
-        ? (header.employee_email !== currentUserEmail) 
+    const isSupervisorView = header
+        ? (header.employee_email !== currentUserEmail)
         : (!!userEmail && userEmail !== currentUserEmail);
-    
+
     // UI State
     const [supervisorEditMode, setSupervisorEditMode] = useState(false);
 
@@ -92,7 +94,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
     useEffect(() => {
         if (currentUserEmail) {
-           init();
+            init();
         }
     }, [currentUserEmail, userEmail, timesheetId]);
 
@@ -113,7 +115,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 const data = await TimeSheetService.getTimeSheetById(timesheetId);
                 if (data) {
                     setHeader(data.header);
-                    
+
                     if (data.logs && data.logs.length > 0) {
                         setLogs(data.logs);
                     } else {
@@ -128,7 +130,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     // Wait, generatePeriods creates keys implicitly? 
                     // Let's look at generatePeriods again. It returns { key, ... }.
                     // We need to find the period that matches the header's start/end.
-                    
+
                     const match = availablePeriods.find(p => p.start === data.header.period_start);
                     if (match) {
                         setSelectedPeriodKey(match.key);
@@ -139,7 +141,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     }
                 }
             } else {
-                 // DEFAULT LOAD (Current Period)
+                // DEFAULT LOAD (Current Period)
                 const current = availablePeriods[0];
                 setSelectedPeriodKey(current.key);
                 await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end, settings || undefined);
@@ -164,17 +166,75 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
     const loadTimeSheet = async (email: string, start: string, end: string, settings?: HR_EmployeeSettings) => {
         const data = await TimeSheetService.getTimeSheet(email, start);
+        const approvedTimeOff = await TimeOffService.getApprovedRequestsByPeriod(email, start, end);
+
         if (data) {
             setHeader(data.header);
-            setLogs(data.logs);
+            const appliedLogs = applyTimeOffToLogs(data.logs, approvedTimeOff);
+            setLogs(appliedLogs);
             setCompTimeEntries(data.compTime);
             setAdditionalInfo(data.header.additional_info || '');
         } else {
             setHeader(null);
             setCompTimeEntries([{ id: '', header: '', date: '', rationale: '' }]); // Start with 1 empty
-            setLogs(generateEmptyLogs(start, end, settings));
+            const emptyLogs = generateEmptyLogs(start, end, settings);
+            const appliedLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
+            setLogs(appliedLogs);
             setAdditionalInfo('');
         }
+    };
+
+    const applyTimeOffToLogs = (currentLogs: HR_TimeSheetLog[], requests: HR_TimeOffRequest[]) => {
+        const newLogs = [...currentLogs];
+        const mapping: Record<string, keyof HR_TimeSheetLog> = {
+            'Vacation': 'vac_hours',
+            'Sick Time': 'sick_hours',
+            'Bereavement Leave': 'bereav_hours',
+            'Jury Duty': 'jury_duty_hours',
+            'Unpaid Leave': 'unpaid_hours',
+            'Personal Leave': 'wd_hours',
+            'Comp-Time': 'wd_hours',
+            'Other': 'unpaid_hours',
+            'Military Leave': 'unpaid_hours',
+            'Family and Medical Leave': 'unpaid_hours'
+        };
+
+        requests.forEach(req => {
+            const field = mapping[req.request_type] || 'unpaid_hours';
+            const start = new Date(req.start_date + 'T00:00:00');
+            const end = new Date(req.end_date + 'T00:00:00');
+
+            newLogs.forEach((log, idx) => {
+                const logDate = new Date(log.date + 'T00:00:00');
+                if (logDate >= start && logDate <= end) {
+                    // Check if weekend (if we should only apply to business days? the user example says "blocks 26, 27, 28" which are work days if 23 is friday)
+                    // The generateEmptyLogs already identifies weekend.
+                    const isWeekend = logDate.getDay() === 0 || logDate.getDay() === 6;
+                    if (isWeekend && req.request_type !== 'Other') return; // Skip weekends for most leaves
+
+                    // Populate hours
+                    const hours = req.total_hours_requested > 8 ? 8 : req.total_hours_requested;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any)[field] = hours;
+
+                    // Lock and clear time fields
+                    newLogs[idx].time_in = '';
+                    newLogs[idx].lunch_out = '';
+                    newLogs[idx].lunch_in = '';
+                    newLogs[idx].time_out = '';
+                    newLogs[idx].reg_hours = 0;
+                    newLogs[idx].daily_total = hours;
+
+                    // Add meta to indicate it's locked by TimeOff
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any).is_timeoff_locked = true;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any).locked_field = field;
+                }
+            });
+        });
+
+        return newLogs;
     };
 
     /**
@@ -186,8 +246,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
      *    - If Status is 'Approved' -> TRUE (Locked).
      *    - if Status is 'Draft' OR 'Rejected' -> FALSE (Editable).
      */
-    const isReadOnly = isSupervisorView 
-        ? !supervisorEditMode 
+    const isReadOnly = isSupervisorView
+        ? !supervisorEditMode
         : (header?.status === 'Submitted' || header?.status === 'Approved');
 
     // Signatures Visibility
@@ -204,7 +264,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             const y = date.getFullYear();
             const m = date.getMonth();
             const d = date.getDate();
-            
+
             let start = '', end = '', label = '';
             const monthName = date.toLocaleString('default', { month: 'long' });
 
@@ -229,14 +289,14 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         const start = new Date(startStr + 'T00:00:00'); // Ensure local time parsing
         const end = new Date(endStr + 'T00:00:00');
         const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        
+
         const current = new Date(start);
         while (current <= end) {
-             const dateStr = current.toISOString().split('T')[0];
-             const dayName = days[current.getDay()];
-             const isWeekend = current.getDay() === 0 || current.getDay() === 6;
+            const dateStr = current.toISOString().split('T')[0];
+            const dayName = days[current.getDay()];
+            const isWeekend = current.getDay() === 0 || current.getDay() === 6;
 
-             logs.push({
+            logs.push({
                 date: dateStr,
                 day_name: dayName,
                 time_in: isWeekend ? '' : (settings?.default_time_in || '08:00'),
@@ -245,21 +305,21 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 time_out: isWeekend ? '' : (settings?.default_time_out || '17:00'),
                 reg_hours: isWeekend ? 0 : 8,
                 daily_total: isWeekend ? 0 : 8,
-                wd_hours: 0, vac_hours: 0, hol_hours: 0, sick_hours: 0, 
+                wd_hours: 0, vac_hours: 0, hol_hours: 0, sick_hours: 0,
                 bereav_hours: 0, ot_hours: 0, jury_duty_hours: 0, unpaid_hours: 0
-             });
-             current.setDate(current.getDate() + 1);
+            });
+            current.setDate(current.getDate() + 1);
         }
         return logs;
     };
 
     const handleLogChange = (index: number, field: keyof HR_TimeSheetLog, value: string) => {
         const newLogs = [...logs];
-        
+
         // Prevent negative values
         let sanitizedValue = value;
         const isLeaveField = ['wd_hours', 'vac_hours', 'hol_hours', 'sick_hours', 'bereav_hours', 'ot_hours', 'jury_duty_hours', 'unpaid_hours'].includes(field);
-        
+
         if (isLeaveField) {
             if (value && parseFloat(value) < 0) sanitizedValue = '0';
         }
@@ -272,25 +332,25 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
 
         if (isTimeField) {
-             const totalStr = TimeUtils.calculateDailyTotal(
-                 newLogs[index].time_in,
-                 newLogs[index].lunch_out,
-                 newLogs[index].lunch_in,
-                 newLogs[index].time_out
-             );
-             newLogs[index].daily_total = parseFloat(totalStr);
-             newLogs[index].reg_hours = parseFloat(totalStr); 
+            const totalStr = TimeUtils.calculateDailyTotal(
+                newLogs[index].time_in,
+                newLogs[index].lunch_out,
+                newLogs[index].lunch_in,
+                newLogs[index].time_out
+            );
+            newLogs[index].daily_total = parseFloat(totalStr);
+            newLogs[index].reg_hours = parseFloat(totalStr);
         } else if (isLeaveField) {
             // Logic from SharePoint: If leave is added, clear time fields and daily total? 
             // Or just subtract from REG?
             // "If Leave fields are modified, reset time fields to force re-entry"
             if (parseFloat(value) > 0) {
-                 newLogs[index].time_in = '';
-                 newLogs[index].lunch_out = '';
-                 newLogs[index].lunch_in = '';
-                 newLogs[index].time_out = '';
-                 newLogs[index].daily_total = 0; // Or sum of leaves? 
-                 newLogs[index].reg_hours = 0;
+                newLogs[index].time_in = '';
+                newLogs[index].lunch_out = '';
+                newLogs[index].lunch_in = '';
+                newLogs[index].time_out = '';
+                newLogs[index].daily_total = 0; // Or sum of leaves? 
+                newLogs[index].reg_hours = 0;
             }
         }
 
@@ -309,13 +369,13 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         try {
             const user = identity?.name || 'Unknown User';
             const email = userEmail || currentUserEmail;
-            
+
             // Calculate Total Hours properly
-            const totalHours = logs.reduce((sum, l) => sum + 
-                Number(l.reg_hours||0) + Number(l.wd_hours||0) + Number(l.vac_hours||0) + 
-                Number(l.hol_hours||0) + Number(l.sick_hours||0) + Number(l.bereav_hours||0) + 
-                Number(l.ot_hours||0) + Number(l.jury_duty_hours||0) + Number(l.unpaid_hours||0)
-            , 0);
+            const totalHours = logs.reduce((sum, l) => sum +
+                Number(l.reg_hours || 0) + Number(l.wd_hours || 0) + Number(l.vac_hours || 0) +
+                Number(l.hol_hours || 0) + Number(l.sick_hours || 0) + Number(l.bereav_hours || 0) +
+                Number(l.ot_hours || 0) + Number(l.jury_duty_hours || 0) + Number(l.unpaid_hours || 0)
+                , 0);
 
             const p = periods.find(x => x.key === selectedPeriodKey);
 
@@ -340,7 +400,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 // Create new
                 headerData = {
                     id: '', created: '', updated: '', collectionId: '', collectionName: '',
-                    employee_email: email, 
+                    employee_email: email,
                     employee_name: user,
                     period_start: p?.start || '',
                     period_end: p?.end || '',
@@ -374,15 +434,15 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             // Local State Update
             // We must setHeader with the data we just saved to ensure UI reflects it immediately
             // without waiting for a reload.
-            setHeader({...headerData, id: savedId});
-            
+            setHeader({ ...headerData, id: savedId });
+
             // If we are supervisor saving edits, we likely want to exit edit mode?
             // The button calling this: setSupervisorEditMode(false); handleSave('Submitted');
             // So edit mode is already false.
             // Status remains 'Submitted'.
             // header.employee_email remains as is.
             // isSupervisorView remains true.
-            
+
             // Re-calc isSupervisorView derived state? 
             // `const isSupervisorView = header ? (header.employee_email !== currentUserEmail) ...`
             // If headerData.employee_email is correct, isSupervisorView stays correct.
@@ -399,9 +459,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             //    Currently we filter by "Direct Reports", but we don't store "My Supervisor's Email" on the user record easily without looking it up.
             //    For MVP: We will notify the employee "Submission Successful" via email as a test, 
             //    OR if we have the supervisor email in 'header'? No, header has supervisor_signed_by name.
-            
+
             // Let's implement at least the "Supervisor Approving" -> Notify Employee (we have employee_email).
-            
+
             if (status === 'Submitted' && !isSupervisorView) {
                 // Employee Submitted. Notify Supervisor.
                 try {
@@ -420,7 +480,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     }
 
                     if (managerEmail) {
-                         const sent = await sendGraphEmail(
+                        const sent = await sendGraphEmail(
                             managerEmail,
                             `Timesheet Submitted: ${user}`,
                             `<p>${user} has submitted a timesheet for ${p?.start} - ${p?.end}.</p><p>Please review and approve.</p>`
@@ -435,9 +495,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     console.error("Failed to notify supervisor", err);
                 }
             }
-            
+
             toast.success(`Timesheet ${status === 'Draft' ? 'Saved' : 'Submitted'} successfully`);
-            
+
             // Reload by ID if possible (since we have savedId and likely are in view/:id mode)
             // This prevents context switching issues.
             const reloaded = await TimeSheetService.getTimeSheetById(savedId);
@@ -447,8 +507,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 setCompTimeEntries(reloaded.compTime);
                 setAdditionalInfo(reloaded.header.additional_info || '');
             } else {
-                 // Fallback if ID load fails (rare)
-                 if (p) await loadTimeSheet(headerData.employee_email, p.start, p.end, userSettings || undefined);
+                // Fallback if ID load fails (rare)
+                if (p) await loadTimeSheet(headerData.employee_email, p.start, p.end, userSettings || undefined);
             }
 
         } catch (e) {
@@ -463,7 +523,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         if (userSettings) {
             setTempSettings({ ...userSettings });
         } else {
-             setTempSettings({
+            setTempSettings({
                 id: '',
                 user_email: currentUserEmail,
                 default_time_in: '08:00',
@@ -501,10 +561,10 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         if (!confirm(`Approve timesheet for ${header.employee_name}?`)) return;
         try {
             // First save any edits
-            await handleSave(header.status as any); 
+            await handleSave(header.status as any);
             // Then approve
             await TimeSheetService.approveTimeSheet(header.id, currentUserName || 'Supervisor');
-            
+
             // Notify Employee
             if (header.employee_email) {
                 const sent = await sendGraphEmail(
@@ -512,20 +572,20 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     "Timesheet Approved",
                     `<p>Your timesheet for ${header.period_start} - ${header.period_end} has been <strong>APPROVED</strong> by ${currentUserName || 'Supervisor'}.</p>`
                 );
-                 if (!sent) toast.warning("Approved, but failed to send email notification.");
+                if (!sent) toast.warning("Approved, but failed to send email notification.");
             }
 
             toast.success("Timesheet Approved");
             // Redirect to dashboard (list) as requested
             go({ to: '/timesheets', type: 'push' });
-        } catch(e) { toast.error("Failed to approve"); }
+        } catch (e) { toast.error("Failed to approve"); }
     };
 
     const handleSupervisorReject = async () => {
         if (!header || !rejectReason) return;
         try {
             await TimeSheetService.rejectTimeSheet(header.id, rejectReason);
-            
+
             // Notify Employee
             if (header.employee_email) {
                 const sent = await sendGraphEmail(
@@ -538,36 +598,36 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
             toast.success("Timesheet Returned to Draft");
             setRejectDialogOpen(false);
-            
+
             // Redirect to dashboard (list) as requested
             go({ to: '/timesheets', type: 'push' });
-        } catch(e) { toast.error("Failed to reject"); }
+        } catch (e) { toast.error("Failed to reject"); }
     };
-    
+
     // UI Helpers
-const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((e.currentTarget as any).showPicker) {
+    const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
+        try {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (e.currentTarget as any).showPicker();
+            if ((e.currentTarget as any).showPicker) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                (e.currentTarget as any).showPicker();
+            }
+        } catch (error) {
+            // Fails silently if browser blocks it (e.g. non-user-triggered focus)
+            console.debug("Picker open suppressed", error);
         }
-    } catch (error) {
-        // Fails silently if browser blocks it (e.g. non-user-triggered focus)
-        console.debug("Picker open suppressed", error);
-    }
-};
+    };
 
     // --- CALCULATIONS ---
     const calculateColumnTotal = (field: keyof HR_TimeSheetLog) => {
         return logs.reduce((sum, log) => sum + Number(log[field] || 0), 0).toFixed(2);
     };
 
-    const hoursThisPeriod = logs.reduce((sum, l) => sum + 
-        Number(l.reg_hours||0) + Number(l.wd_hours||0) + Number(l.vac_hours||0) + 
-        Number(l.hol_hours||0) + Number(l.sick_hours||0) + Number(l.bereav_hours||0) + 
-        Number(l.ot_hours||0) + Number(l.jury_duty_hours||0) + Number(l.unpaid_hours||0)
-    , 0).toFixed(2);
+    const hoursThisPeriod = logs.reduce((sum, l) => sum +
+        Number(l.reg_hours || 0) + Number(l.wd_hours || 0) + Number(l.vac_hours || 0) +
+        Number(l.hol_hours || 0) + Number(l.sick_hours || 0) + Number(l.bereav_hours || 0) +
+        Number(l.ot_hours || 0) + Number(l.jury_duty_hours || 0) + Number(l.unpaid_hours || 0)
+        , 0).toFixed(2);
 
 
     if (isLoading && !logs.length) return <div>Loading...</div>;
@@ -582,7 +642,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
             });
             toast.success("Timesheet Unlocked");
             // Reload page to reset state safely
-            window.location.reload(); 
+            window.location.reload();
         } catch (e) {
             console.error(e);
             toast.error("Failed to unlock");
@@ -591,7 +651,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
 
     return (
         <div className="space-y-6 max-w-[1400px]">
-             <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+            <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
                         <DialogTitle>Employee Settings</DialogTitle>
@@ -609,7 +669,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                 type="time"
                                 onClick={showTimePicker}
                                 value={tempSettings.default_time_in}
-                                onChange={(e) => setTempSettings({...tempSettings, default_time_in: e.target.value})}
+                                onChange={(e) => setTempSettings({ ...tempSettings, default_time_in: e.target.value })}
                                 className="col-span-3"
                             />
                         </div>
@@ -622,7 +682,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                 type="time"
                                 onClick={showTimePicker}
                                 value={tempSettings.default_lunch_out}
-                                onChange={(e) => setTempSettings({...tempSettings, default_lunch_out: e.target.value})}
+                                onChange={(e) => setTempSettings({ ...tempSettings, default_lunch_out: e.target.value })}
                                 className="col-span-3"
                             />
                         </div>
@@ -635,7 +695,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                 type="time"
                                 onClick={showTimePicker}
                                 value={tempSettings.default_lunch_in}
-                                onChange={(e) => setTempSettings({...tempSettings, default_lunch_in: e.target.value})}
+                                onChange={(e) => setTempSettings({ ...tempSettings, default_lunch_in: e.target.value })}
                                 className="col-span-3"
                             />
                         </div>
@@ -648,7 +708,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                 type="time"
                                 onClick={showTimePicker}
                                 value={tempSettings.default_time_out}
-                                onChange={(e) => setTempSettings({...tempSettings, default_time_out: e.target.value})}
+                                onChange={(e) => setTempSettings({ ...tempSettings, default_time_out: e.target.value })}
                                 className="col-span-3"
                             />
                         </div>
@@ -660,17 +720,17 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
             </Dialog>
 
             {/* ACTION TOOLBAR */}
-            <ActionToolbar 
+            <ActionToolbar
                 title={isSupervisorView ? `Reviewing: ${header?.employee_name || userEmail}` : "Employee Time Sheet"}
                 endActions={
                     <>
-                         {/* SUPERVISOR ACTIONS */}
-                         {isSupervisorView && (
-                             <>
+                        {/* SUPERVISOR ACTIONS */}
+                        {isSupervisorView && (
+                            <>
                                 {(header?.status === 'Submitted') && (
                                     <>
                                         <Button variant="destructive" onClick={() => setRejectDialogOpen(true)}>Reject</Button>
-                                        
+
                                         {!supervisorEditMode ? (
                                             <Button variant="secondary" onClick={() => setSupervisorEditMode(true)}>Enable Editing</Button>
                                         ) : (
@@ -689,29 +749,29 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                         Unlock / Reopen
                                     </Button>
                                 )}
-                             </>
-                         )}
+                            </>
+                        )}
 
-                         {/* EMPLOYEE ACTIONS */}
-                         {!isSupervisorView && (header?.status === 'Draft' || header?.status === 'Rejected' || !header?.status) && (
-                             <>
+                        {/* EMPLOYEE ACTIONS */}
+                        {!isSupervisorView && (header?.status === 'Draft' || header?.status === 'Rejected' || !header?.status) && (
+                            <>
                                 <Button variant="outline" onClick={() => handleSave('Draft')}>Save Draft</Button>
                                 <Button onClick={() => handleSave('Submitted')}>Sign & Submit</Button>
-                             </>
-                         )}
+                            </>
+                        )}
 
-                         {/* PDF */}
-                         { showSignatures && header?.status !== 'Submitted' && (
-                             <Button variant="ghost" size="icon" onClick={handleDownloadPDF}>
+                        {/* PDF */}
+                        {showSignatures && header?.status !== 'Submitted' && (
+                            <Button variant="ghost" size="icon" onClick={handleDownloadPDF}>
                                 <Download className="w-5 h-5 text-muted-foreground" />
-                             </Button>
-                         )}
-                         
-                         {!isSupervisorView && !isReadOnly && (
-                             <Button variant="ghost" size="icon" onClick={handleOpenSettings}>
+                            </Button>
+                        )}
+
+                        {!isSupervisorView && !isReadOnly && (
+                            <Button variant="ghost" size="icon" onClick={handleOpenSettings}>
                                 <Settings className="w-5 h-5 text-muted-foreground" />
-                             </Button>
-                         )}
+                            </Button>
+                        )}
                     </>
                 }
             />
@@ -719,8 +779,8 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
             {/* INFO & SELECTOR */}
             <div className="flex justify-between items-end">
                 <div>
-                     <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || currentUserName}</span></div>
-                     <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
+                    <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || currentUserName}</span></div>
+                    <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
                 </div>
                 <div>
                     <div className="text-sm font-semibold text-right">Period</div>
@@ -729,7 +789,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
             </div>
 
             {/* STATUS BANNER - Show only if not Draft */}
-            { showSignatures && (
+            {showSignatures && (
                 <div className="bg-muted border border-border p-3 text-sm rounded text-muted-foreground">
                     <div><span className="font-bold">Signed by Employee:</span> {header?.employee_signed_by ? `${header.employee_signed_by} on ${header.employee_signed_date}` : 'Not signed'}</div>
                     <div><span className="font-bold">Approved by Supervisor:</span> {header?.supervisor_signed_by ? `${header.supervisor_signed_by} on ${header.supervisor_signed_date}` : 'Not approved'}</div>
@@ -760,30 +820,114 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                     <TableHead className="w-12">UNPD</TableHead>
                                 </TableRow>
                             </TableHeader>
-                             <TableBody>
+                            <TableBody>
                                 {logs.map((log, idx) => (
-                                    <TableRow key={idx}>
+                                    <TableRow key={idx} className={(log as any).is_timeoff_locked ? "bg-amber-50/20" : ""}>
                                         <TableCell className="p-2 text-muted-foreground">{log.date}</TableCell>
                                         <TableCell className="p-2 text-muted-foreground">{log.day_name}</TableCell>
-                                        
-                                        {/* TIME INPUTS */}
-                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_in} onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_out} onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.lunch_in} onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input type="time" onFocus={showTimePicker} readOnly={isReadOnly} className={`h-7 text-xs text-center ${isReadOnly ? 'bg-muted' : ''}`} value={log.time_out} onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)} /></TableCell>
-                                        
+
+                                        {/* TIME INPUTS - Blocked if ANY Time Off applied to this day */}
+                                        <TableCell className="p-1">
+                                            <Input
+                                                type="time"
+                                                onFocus={showTimePicker}
+                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
+                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
+                                                value={log.time_in}
+                                                onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                type="time"
+                                                onFocus={showTimePicker}
+                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
+                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
+                                                value={log.lunch_out}
+                                                onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                type="time"
+                                                onFocus={showTimePicker}
+                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
+                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
+                                                value={log.lunch_in}
+                                                onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                type="time"
+                                                onFocus={showTimePicker}
+                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
+                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
+                                                value={log.time_out}
+                                                onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)}
+                                            />
+                                        </TableCell>
+
                                         {/* READ ONLY REG */}
                                         <TableCell className="p-1 font-bold bg-blue-50/30 text-foreground">{log.reg_hours?.toString()}</TableCell>
 
-                                        {/* LEAVE INPUTS */}
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.wd_hours} onChange={(e) => handleLogChange(idx, 'wd_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.vac_hours} onChange={(e) => handleLogChange(idx, 'vac_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.hol_hours} onChange={(e) => handleLogChange(idx, 'hol_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.sick_hours} onChange={(e) => handleLogChange(idx, 'sick_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.bereav_hours} onChange={(e) => handleLogChange(idx, 'bereav_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.ot_hours} onChange={(e) => handleLogChange(idx, 'ot_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.jury_duty_hours} onChange={(e) => handleLogChange(idx, 'jury_duty_hours', e.target.value)} /></TableCell>
-                                        <TableCell className="p-1"><Input readOnly={isReadOnly} className={`h-7 text-xs text-center px-1 ${isReadOnly ? 'bg-muted' : ''}`} type="number" min={0} value={log.unpaid_hours} onChange={(e) => handleLogChange(idx, 'unpaid_hours', e.target.value)} /></TableCell>
+                                        {/* LEAVE INPUTS - Blocked if THIS SPECIFIC field is the one locked */}
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.wd_hours} onChange={(e) => handleLogChange(idx, 'wd_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.vac_hours} onChange={(e) => handleLogChange(idx, 'vac_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.hol_hours} onChange={(e) => handleLogChange(idx, 'hol_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.sick_hours} onChange={(e) => handleLogChange(idx, 'sick_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'bereav_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'bereav_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.bereav_hours} onChange={(e) => handleLogChange(idx, 'bereav_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.ot_hours} onChange={(e) => handleLogChange(idx, 'ot_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury_duty_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury_duty_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.jury_duty_hours} onChange={(e) => handleLogChange(idx, 'jury_duty_hours', e.target.value)}
+                                            />
+                                        </TableCell>
+                                        <TableCell className="p-1">
+                                            <Input
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpaid_hours')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpaid_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.unpaid_hours} onChange={(e) => handleLogChange(idx, 'unpaid_hours', e.target.value)}
+                                            />
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                                 {/* TOTALS ROW */}
@@ -806,22 +950,22 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
             </Card>
 
             <Separator />
-            
+
             {/* ADDITIONAL INFO */}
             <div>
-                 <h3 className="font-bold text-sm mb-2">Additional Information</h3>
-                 <Textarea 
+                <h3 className="font-bold text-sm mb-2">Additional Information</h3>
+                <Textarea
                     readOnly={isReadOnly}
                     placeholder={isReadOnly ? "No additional notes" : "Enter any additional notes..."}
                     className="h-20"
                     value={additionalInfo}
                     onChange={(e) => setAdditionalInfo(e.target.value)}
-                 />
+                />
             </div>
 
             {/* BOTTOM SECTION */}
             <div className="flex gap-8 items-start">
-                
+
                 {/* HOURS BOX */}
                 <div className="border-2 border-primary w-48 shrink-0 rounded-md overflow-hidden">
                     <div className="bg-muted border-b border-primary text-center text-xs font-bold py-1 text-muted-foreground">
@@ -834,7 +978,7 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
 
                 {/* COMP TIME RATIONALE */}
                 <div className="flex-grow">
-                     {compTimeEntries.length > 0 && (
+                    {compTimeEntries.length > 0 && (
                         <>
                             <div className="font-bold text-sm mb-2">Comp Time Rationale</div>
                             <div className="grid grid-cols-[150px_1fr] gap-4 mb-2 text-xs font-medium text-muted-foreground">
@@ -842,31 +986,31 @@ const showTimePicker = (e: React.SyntheticEvent<HTMLInputElement>) => {
                                 <div>Rationale</div>
                             </div>
                         </>
-                     )}
-                     {compTimeEntries.map((entry, idx) => (
-                         <div key={idx} className="grid grid-cols-[150px_1fr] gap-4 mb-2">
-                             <Input 
+                    )}
+                    {compTimeEntries.map((entry, idx) => (
+                        <div key={idx} className="grid grid-cols-[150px_1fr] gap-4 mb-2">
+                            <Input
                                 readOnly={isReadOnly}
                                 type="date"
                                 className="h-8"
                                 value={entry.date}
                                 onFocus={(e) => {
-                                    try { e.currentTarget.showPicker(); } catch {}
+                                    try { e.currentTarget.showPicker(); } catch { }
                                 }}
                                 onChange={(e) => handleCompTimeChange(idx, 'date', e.target.value)}
-                             />
-                             <Input 
+                            />
+                            <Input
                                 readOnly={isReadOnly}
-                                placeholder="Enter rationale..." 
+                                placeholder="Enter rationale..."
                                 className="h-8"
                                 value={entry.rationale}
                                 onChange={(e) => handleCompTimeChange(idx, 'rationale', e.target.value)}
-                             />
-                         </div>
-                     ))}
-                     { !isReadOnly && (
-                        <Button variant="link" onClick={() => setCompTimeEntries([...compTimeEntries, {id:'', header:'', date:'', rationale:''}])} className="h-6 p-0 text-xs">+ Add Line</Button>
-                     )}
+                            />
+                        </div>
+                    ))}
+                    {!isReadOnly && (
+                        <Button variant="link" onClick={() => setCompTimeEntries([...compTimeEntries, { id: '', header: '', date: '', rationale: '' }])} className="h-6 p-0 text-xs">+ Add Line</Button>
+                    )}
                 </div>
             </div>
 

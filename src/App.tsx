@@ -1,11 +1,12 @@
 import { Authenticated, GitHubBanner, Refine } from "@refinedev/core";
-import { 
-  LayoutDashboard, 
-  Tags, 
-  Factory, 
-  Users, 
-  Clock, 
-  ShieldAlert 
+import {
+  LayoutDashboard,
+  Tags,
+  Factory,
+  Users,
+  Clock,
+  ShieldAlert,
+  Calendar
 } from "lucide-react";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
@@ -34,6 +35,8 @@ import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/login";
 import { TimeSheetPage } from "./modules/hr/timesheets/my-timesheet/page";
 import { TimeSheetList } from "./modules/hr/timesheets/my-timesheet/list";
+import { TimeOffPage } from "./modules/hr/time-off/page";
+import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { useState, useEffect } from "react";
 import pb from "./pocketbase";
@@ -45,19 +48,19 @@ function App() {
 
   useEffect(() => {
     return pb.authStore.onChange((_token, model) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setIsSupervisor(!!(model as any)?.is_supervisor);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setIsSupervisor(!!(model as any)?.is_supervisor);
     });
   }, []);
 
   const resources = [
     {
-       name: "dashboard",
-       list: "/",
-       meta: {
-           label: "Dashboard",
-           icon: <LayoutDashboard className="h-4 w-4" />
-       }
+      name: "dashboard",
+      list: "/",
+      meta: {
+        label: "Dashboard",
+        icon: <LayoutDashboard className="h-4 w-4" />
+      }
     },
     {
       name: "IT_Category",
@@ -82,11 +85,11 @@ function App() {
       },
     },
     {
-        name: "HR",
-        meta: {
-            label: "HR",
-            icon: <Users className="h-4 w-4" />
-        }
+      name: "HR",
+      meta: {
+        label: "HR",
+        icon: <Users className="h-4 w-4" />
+      }
     },
     {
       name: "TimeSheets",
@@ -98,19 +101,29 @@ function App() {
         icon: <Clock className="h-4 w-4" />
       },
     },
+    {
+      name: "TimeOff",
+      list: "/hr/time-off",
+      create: "/hr/time-off/new",
+      meta: {
+        label: "Time Off Request",
+        parent: "HR",
+        icon: <Calendar className="h-4 w-4" />
+      },
+    },
     ...(isSupervisor ? [{
       name: "Supervisor",
       list: "/supervisor",
       meta: {
-          label: "Supervisor Dashboard",
-          parent: "HR",
-          icon: <ShieldAlert className="h-4 w-4" />
+        label: "Supervisor Dashboard",
+        parent: "HR",
+        icon: <ShieldAlert className="h-4 w-4" />
       }
     }] : [])
   ];
 
   return (
-    <BrowserRouter> 
+    <BrowserRouter>
       <RefineKbarProvider>
         <ThemeProvider>
           <DevtoolsProvider>
@@ -123,7 +136,7 @@ function App() {
               resources={resources}
               accessControlProvider={{
                 can: async ({ resource }) => {
-                   // Fallback security, though resource won't exist in menu if hidden
+                  // Fallback security, though resource won't exist in menu if hidden
                   if (resource === "Supervisor") {
                     const user = pb.authStore.record;
                     const isSup = (user as any)?.is_supervisor || false;
@@ -155,18 +168,23 @@ function App() {
 
                   <Route path="*" element={<ErrorComponent />} />
                   <Route path="/it-category">
-                      <Route index element={<ITCategoryList />} />
-                      <Route path="create" element={<ITCategoryCreate />} />
-                      <Route path="edit/:id" element={<ITCategoryEdit />} />
-                      <Route path="show/:id" element={<ITCategoryShow />} />
+                    <Route index element={<ITCategoryList />} />
+                    <Route path="create" element={<ITCategoryCreate />} />
+                    <Route path="edit/:id" element={<ITCategoryEdit />} />
+                    <Route path="show/:id" element={<ITCategoryShow />} />
                   </Route>
                   <Route path="/it-manufacturer">
-                      <Route index element={<ITManufacturerList />} />
+                    <Route index element={<ITManufacturerList />} />
                   </Route>
                   <Route path="/timesheets" element={<TimeSheetList />} />
                   <Route path="/timesheets/entry" element={<TimeSheetPage />} />
                   <Route path="/timesheets/view/:id" element={<TimeSheetPage />} />
                   <Route path="/timesheets/review/:email" element={<TimeSheetPage />} />
+                  <Route path="/hr/time-off">
+                    <Route index element={<TimeOffList />} />
+                    <Route path="new" element={<TimeOffPage />} />
+                    <Route path="view/:id" element={<TimeOffPage />} />
+                  </Route>
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                 </Route>
                 <Route
