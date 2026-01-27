@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TimeSheetService } from '../../../../services/timeSheetService';
+import { authClient } from '../../../../lib/auth';
+import { useAuthStore } from '@/stores/authStore';
 import { HR_TimeSheetHeader } from '../../../../types/timesheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,21 +32,75 @@ export const SupervisorDashboard: React.FC = () => {
     const [rejectDialog, setRejectDialog] = useState<{ open: boolean, id: string }>({ open: false, id: '' });
     const [rejectReason, setRejectReason] = useState('');
 
+    const permissionsStr = JSON.stringify(permissions);
+    const processedRef = React.useRef(false);
+
     useEffect(() => {
-        if (!isLoadingPermissions) {
-            // Check based on the unified logic (which effectively checks table field is_supervisor)
-            // Or access identity if we had the raw record, but permissions object is safer if getPermissions is aligned.
-            // Let's rely on getPermissions being updated, OR simply check the hook result.
-            // But wait, getPermissions in authProvider might still be doing the old logic.
-            // Let's update authProvider first to be safe, but here we can just check:
-            if (!permissions?.isSupervisor) {
-                 toast.error("Unauthorized: Supervisor access required.");
-                 go({ to: '/', type: 'push' });
+        const checkAccess = async () => {
+             // Hard Stop: If already processed this mount, do not run again.
+             if (processedRef.current) return;
+             if (isLoadingPermissions) return;
+
+             // Logic: isSupervisor OR has direct reports
+             // 1. Check permissions (from authProvider)
+             if (permissions?.isSupervisor) {
+                 processedRef.current = true;
+                 loadSubmissions();
                  return;
-            }
-            loadSubmissions();
-        }
-    }, [isLoadingPermissions, permissions]);
+             }
+
+             // 2. Fallback: Check session directReports
+             const { data: session } = await authClient.getSession();
+             let directReports: string[] = (session?.user as any)?.directReports || [];
+             
+             if (typeof directReports === 'string') {
+                 try {
+                     directReports = JSON.parse(directReports);
+                 } catch (e) {
+                     directReports = [];
+                 }
+             }
+
+             if (directReports.length > 0) {
+                 processedRef.current = true;
+                 loadSubmissions();
+                 return;
+             }
+
+             if (directReports.length > 0) {
+                 processedRef.current = true;
+                 loadSubmissions();
+                 return;
+             }
+
+             // 3. Fallback: Check Zustand Store (Cache)
+             // We access the store imperatively here or rely on the hook outside?
+             // Accessing imperatively prevents staleness issues inside async function if using getState(), 
+             // but hook is fine if included in deps. Let's use the hook values.
+             // (Assume hook values are passed or we use getState if outside component, but here we are inside).
+             // Actually, let's just use the store variables which are reactive.
+    
+             // Note: In a real refactor we might remove steps 1 & 2 and rely solely on the store if we trust App.tsx
+             // But for now, using store as the "Cache" fallback.
+             
+             // We need to read from the store state. Since we are in an async function and the hook state might be stale in closure
+             // if we didn't add it to deps... but we can just use the store directly if we import it.
+             // OR, better, let's stick to the pattern:
+             const state = useAuthStore.getState();
+             if (state.isSupervisor || (state.directReports && state.directReports.length > 0)) {
+                 processedRef.current = true;
+                 loadSubmissions();
+                 return;
+             }
+
+             // 4. Unauthorized
+             toast.error("Unauthorized: Supervisor access required.");
+             go({ to: '/', type: 'push' });
+        };
+        
+        checkAccess();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isLoadingPermissions, permissionsStr, go]);
 
     const loadSubmissions = async () => {
         setIsLoading(true);
@@ -123,7 +179,7 @@ export const SupervisorDashboard: React.FC = () => {
                                 {item.status}
                             </Badge>
                         </TableCell>
-                        <TableCell>{item.total_hours.toFixed(2)}</TableCell>
+                        <TableCell>{(item.total_hours || 0).toFixed(2)}</TableCell>
                         <TableCell>{item.employee_signed_by}</TableCell>
                         <TableCell className="text-right space-x-2">
                              <Button size="sm" variant="secondary" onClick={() => go({ to: `/timesheets/view/${item.id}` })}>

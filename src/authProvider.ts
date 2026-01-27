@@ -55,8 +55,15 @@ export const adminAuthProvider: AuthProvider = {
     },
     getPermissions: async () => {
         const { data: session } = await authClient.getSession();
-        // Adjust based on your session user properties
-        return (session?.user as any)?.role ? [(session?.user as any).role] : [];
+        const user = session?.user as any;
+        if (!user) return null;
+
+        return {
+            role: user.role,
+            isSupervisor: !!user.isSupervisor,
+            // Fallback for role-based checks
+            roles: [user.role]
+        };
     },
     getIdentity: async () => {
         const { data: session } = await authClient.getSession();

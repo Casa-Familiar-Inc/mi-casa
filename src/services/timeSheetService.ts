@@ -7,6 +7,7 @@ import {
 } from "../types/timesheet";
 import { AuditService } from "./AuditService";
 import { authClient } from "../lib/auth";
+import { useAuthStore } from "../stores/authStore";
 
 const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
 
@@ -139,9 +140,28 @@ export const TimeSheetService = {
     async getSubmittedTimeSheets(statuses: string[] = ['Submitted']): Promise<HR_TimeSheetHeader[]> {
         try {
             const { data: session } = await authClient.getSession();
-            const directReports: string[] = (session?.user as any)?.directReports || [];
+            let directReports: string[] = (session?.user as any)?.directReports || [];
 
-            if (directReports.length === 0) return [];
+            if (typeof directReports === 'string') {
+                try {
+                    directReports = JSON.parse(directReports);
+                } catch (e) {
+                    console.error("Failed to parse directReports", e);
+                    directReports = [];
+                }
+            }
+
+            // Fallback: Zustand Store
+            if (!Array.isArray(directReports) || directReports.length === 0) {
+                try {
+                    const state = useAuthStore.getState();
+                    if (state.directReports && state.directReports.length > 0) {
+                        directReports = state.directReports;
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            if (!Array.isArray(directReports) || directReports.length === 0) return [];
 
             const statusQuery = statuses.map(s => `status=${s}`).join('&');
             const reportsQuery = directReports.map(email => `employee_email=${email}`).join('&');
