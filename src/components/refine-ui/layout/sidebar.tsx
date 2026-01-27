@@ -39,7 +39,8 @@ import {
   type TreeMenuItem,
   useActiveAuthProvider,
   useLogout,
-  useGetIdentity
+  useGetIdentity,
+  useCan
 } from "@refinedev/core";
 import { ChevronRight, ListIcon, LogOutIcon, ChevronsUpDown, Sparkles, User, Settings } from "lucide-react";
 import React from "react";
@@ -121,6 +122,21 @@ function SidebarItem({ item, selectedKey }: MenuItemProps) {
                 </SidebarMenuItem>
             </Collapsible>
         );
+    }
+
+    // --- MANUAL ACCESS CONTROL CHECK ---
+    const { data: canAccess } = useCan({
+        resource: item.name,
+        action: "list",
+        queryOptions: {
+            enabled: !!item.name, // Only check if name exists
+        }
+    });
+
+    // If Access Control says NO, hide this item.
+    // Note: useMenu() *should* do this, but if it fails, this is our safety net.
+    if (canAccess?.can === false) {
+        return null; 
     }
 
     // Standard Link Item

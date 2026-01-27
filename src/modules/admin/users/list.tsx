@@ -21,17 +21,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 
 // Define Screens we can assign
+// Define Screens we can assign (Fallback/Initial)
 const AVAILABLE_SCREENS = [
     { id: 'loans', label: 'Loans' },
     { id: 'TimeSheets', label: 'TimeSheets' },
     { id: 'TimeOff', label: 'Time Off' },
     { id: 'Supervisor', label: 'Supervisor Dashboard' },
-    { id: 'Employees', label: 'Employee Management' },
+    { id: 'employees', label: 'Employee Management' },
     { id: 'it-category', label: 'IT Settings' }
 ];
 
 export const UserList: React.FC = () => {
     const [users, setUsers] = React.useState<any[]>([]);
+    const [availableScreens, setAvailableScreens] = React.useState<{id: string, label: string}[]>(AVAILABLE_SCREENS);
     const [isLoading, setIsLoading] = React.useState(true);
 
     const fetchUsers = async () => {
@@ -46,6 +48,16 @@ export const UserList: React.FC = () => {
             } else {
                 console.error("Failed to fetch users", res.status);
             }
+            
+            // Fetch Screens
+            const resScreens = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/screens`, {
+                 credentials: 'include'
+            });
+             if (resScreens.ok) {
+                 const data = await resScreens.json();
+                 setAvailableScreens(data);
+             }
+
         } catch (e) {
             console.error("Error fetching users", e);
         } finally {
@@ -164,7 +176,7 @@ export const UserList: React.FC = () => {
                                                         <div className="space-y-4">
                                                             <Label>Allowed Screens</Label>
                                                             <div className="border rounded p-4 space-y-2">
-                                                                {AVAILABLE_SCREENS.map(sc => (
+                                                                {availableScreens.map(sc => (
                                                                     <div key={sc.id} className="flex items-center space-x-2">
                                                                         <Checkbox 
                                                                             id={`screen-${sc.id}`} 

@@ -44,6 +44,7 @@ import { authClient } from "./lib/auth";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 import { useAuthStore } from "./stores/authStore";
 import axios from "axios";
+import { defineAbilityFor } from "./auth/ability";
 
 const API_URL = import.meta.env.VITE_API_URL + "/api";
 
@@ -163,7 +164,8 @@ function App() {
   // Access Control Logic
   // Admin: Can do everything.
   // Others: Can only see "allowedScreens" OR "Supervisor" if they are one.
-  const { allowedScreens, userRole } = useAuthStore();
+  // Others: Can only see "allowedScreens" OR "Supervisor" if they are one.
+  const { allowedScreens, userRole, directReports } = useAuthStore();
 
   return (
     <BrowserRouter>
@@ -177,45 +179,39 @@ function App() {
               routerProvider={routerProvider}
               resources={resources}
               accessControlProvider={{
-                can: async ({ resource }) => {
+                can: async ({ resource, action }) => {
                   const role = userRole || 'user';
                   
-                  // Admin Rule
-                  if (role === 'admin') return { can: true };
+                  // Create the ability based on current store state
+                  // Ideally we memoize this, but for now this is fine given its cheap
+                  const ability = defineAbilityFor({
+                      id: 'current', 
+                      role: role,
+                      isSupervisor: isSupervisor,
+                      allowedScreens: allowedScreens,
+                      directReports: directReports
+                  });
 
-                  // Supervisor Rule
-                  if (resource === "Supervisor") {
-                    return { can: isSupervisor || role === 'hr' || allowedScreens.includes('Supervisor') };
+                  // Map Refine actions to CASL actions if strictly needed, 
+                  // but we defined 'list', 'show', etc in factory directly.
+                  // Actions: list, show, edit, create, delete
+                  
+                  // Default to 'list' if action undefined (e.g. menu)
+                  const act = action || 'list';
+                  
+                  const can = ability.can(act, resource || 'all');
+                  
+                  // Debug logging
+                  if (resource !== 'dashboard') {
+                      console.groupCollapsed(`[AccessControl] Checking ${act} on ${resource}`);
+                      console.log('User Role:', role);
+                      console.log('Allowed Screens:', allowedScreens);
+                      console.log('Result:', can);
+                      console.log('Ability Rules:', ability.rules);
+                      console.groupEnd();
                   }
 
-                  // Default Allowed Screens
-                  // Always allow 'dashboard'
-                  if (resource === "dashboard") return { can: true };
-                  
-                  // My TimeSheet / TimeOff are basic employee features, usually allowed for all users?
-                  // If we want strict "Granular Access", we might block them too, but "My TimeSheet" is essential.
-                  // Let's assume standard employees get TimeSheets/TimeOff by default unless blocked?
-                  // Or let's strictly follow "allowedScreens" if present?
-                  // User said "also needs to select permitted screens".
-                  // Let's assume:
-                  // 1. Basic Modules (TimeSheets, TimeOff) -> Available to all (for now) OR check allowedScreens.
-                  //    If we check allowedScreens strictly, existing users might lose access if we don't migrate specific data.
-                  //    Let's check if allowedScreens is empty -> allow defaults. If populated -> enforce?
-                  //    Safest: Allow basic modules + `allowedScreens`.
-                  
-                  // HR Menu
-                  if (resource === "HR") return { can: true };
-
-                  // TimeSheets & TimeOff - Allow freely or restrict?
-                  // User "needs to select permitted screens".
-                  // But we also want basics.
-                  // For now, let's keep them allowed by default OR check allowedScreens.
-                  if (resource === "TimeSheets" || resource === "TimeOff") return { can: true };
-                  
-                  // For other modules (Loans, Employees, etc):
-                  if (resource && allowedScreens.includes(resource)) return { can: true };
-
-                  return { can: false };
+                  return { can };
                 }
               }}
               options={{
