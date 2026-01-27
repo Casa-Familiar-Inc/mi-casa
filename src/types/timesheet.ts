@@ -1,5 +1,6 @@
 export interface HR_TimeSheetHeader {
     id: string;
+    user_id: string;
     created: string;
     updated: string;
     employee_email: string;
@@ -7,7 +8,7 @@ export interface HR_TimeSheetHeader {
     period_start: string;
     period_end: string;
     status: 'Draft' | 'Submitted' | 'Approved' | 'Rejected';
-    total_hours: number;
+    total_hours: number | string;
     additional_info: string;
     employee_signed_by: string;
     employee_signed_date: string;

@@ -22,7 +22,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Textarea } from '@/components/ui/textarea';
 
 export const SupervisorDashboard: React.FC = () => {
-    const { data: identity } = useGetIdentity<{ name: string }>();
+    const { data: identity } = useGetIdentity<{ id: string; name: string }>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: permissions, isLoading: isLoadingPermissions } = usePermissions<any>({});
     const go = useGo();
@@ -110,8 +110,11 @@ export const SupervisorDashboard: React.FC = () => {
             // History = Approved, Rejected
             const allData = await TimeSheetService.getSubmittedTimeSheets(['Submitted', 'Approved', 'Rejected']);
             
-            setPending(allData.filter(d => d.status === 'Submitted'));
-            setHistory(allData.filter(d => d.status === 'Approved' || d.status === 'Rejected'));
+            // Filter out my own timesheets (I shouldn't approve my own)
+            const filteredData = allData.filter(d => d.user_id !== identity?.id);
+
+            setPending(filteredData.filter(d => d.status === 'Submitted'));
+            setHistory(filteredData.filter(d => d.status === 'Approved' || d.status === 'Rejected'));
 
         } catch (e) {
             console.error(e);
@@ -179,7 +182,7 @@ export const SupervisorDashboard: React.FC = () => {
                                 {item.status}
                             </Badge>
                         </TableCell>
-                        <TableCell>{(item.total_hours || 0).toFixed(2)}</TableCell>
+                        <TableCell>{Number(item.total_hours || 0).toFixed(2)}</TableCell>
                         <TableCell>{item.employee_signed_by}</TableCell>
                         <TableCell className="text-right space-x-2">
                              <Button size="sm" variant="secondary" onClick={() => go({ to: `/timesheets/view/${item.id}` })}>

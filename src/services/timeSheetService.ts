@@ -79,9 +79,9 @@ export const TimeSheetService = {
         }
     },
 
-    async getMyTimeSheets(email: string): Promise<HR_TimeSheetHeader[]> {
+    async getMyTimeSheets(): Promise<HR_TimeSheetHeader[]> {
         try {
-            const response = await fetch(`${API_BASE}/timesheets?employee_email=${email}&_sort=-period_start`, { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/timesheets/my`, { credentials: 'include' });
             if (!response.ok) return [];
             return await response.json();
         } catch (error) {

@@ -32,7 +32,7 @@ export const TimeSheetList = () => {
 
     useEffect(() => {
         if (identity?.email) {
-            loadData(identity.email);
+            loadData();
         }
     }, [identity]);
 
@@ -41,10 +41,10 @@ export const TimeSheetList = () => {
          setPeriods(generatePeriods(12));
     }, [headers]);
 
-    const loadData = async (email: string) => {
+    const loadData = async () => {
         setIsLoading(true);
         // Load My Timesheets
-        const myData = await TimeSheetService.getMyTimeSheets(email);
+        const myData = await TimeSheetService.getMyTimeSheets();
         setHeaders(myData);
         setIsLoading(false);
     };
@@ -107,7 +107,7 @@ export const TimeSheetList = () => {
         }
     };
 
-    const renderTable = (data: HR_TimeSheetHeader[], showEmployeeName = false) => (
+    const renderTable = (data: HR_TimeSheetHeader[], showEmployeeName = true) => (
          <Table>
             <TableHeader>
                 <TableRow>
@@ -129,7 +129,7 @@ export const TimeSheetList = () => {
                                 {h.status || 'Draft'}
                             </Badge>
                         </TableCell>
-                        <TableCell>{h.total_hours?.toFixed(2)}</TableCell>
+                        <TableCell>{Number(h.total_hours || 0).toFixed(2)}</TableCell>
                         <TableCell>{h.employee_signed_by || '-'}</TableCell>
                         <TableCell className="text-right">
                             <Button variant="ghost" size="sm" onClick={() => go({ to: `/timesheets/view/${h.id}` })}>

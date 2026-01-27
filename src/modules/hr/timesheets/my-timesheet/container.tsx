@@ -47,7 +47,7 @@ interface TimeSheetContainerProps {
 }
 
 export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmail, timesheetId }) => {
-    const { data: identity } = useGetIdentity<{ email: string, name: string }>();
+    const { data: identity } = useGetIdentity<{ id: string, email: string, name: string }>();
     const { data: permissions } = usePermissions({}); // { isSupervisor: boolean, jobTitle: string }
     const go = useGo();
     const currentUserEmail = identity?.email || '';
@@ -399,7 +399,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             } else {
                 // Create new
                 headerData = {
-                    id: '', created: '', updated: '', collectionId: '', collectionName: '',
+                    id: '',
+                    user_id: identity?.id || '',
+                    created: '',
+                    updated: '',
+                    collectionId: '',
+                    collectionName: '',
                     employee_email: email,
                     employee_name: user,
                     period_start: p?.start || '',
