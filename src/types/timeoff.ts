@@ -20,17 +20,14 @@ export interface HR_TimeOffRequest {
 
     // Type of Request
     request_type:
-    | 'Vacation'
-    | 'Personal Leave'
-    | 'Bereavement Leave'
-    | 'Jury Duty'
-    | 'Unpaid Leave'
-    | 'Other'
-    | 'Military Leave'
-    | 'Family and Medical Leave'
-    | 'Sick Time'
-    | 'Comp-Time'
-    | 'Request to Earn Comp-Time';
+    | 'WD'
+    | 'VAC'
+    | 'HOL'
+    | 'SICK'
+    | 'BER'
+    | 'OT'
+    | 'JURY'
+    | 'UNPD';
     other_type_details?: string;
     reason?: string;
     comments?: string;

@@ -59,14 +59,14 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
             log.lunch_in,
             log.time_out,
             log.reg_hours,
-            log.wd_hours || '',
-            log.vac_hours || '',
-            log.hol_hours || '',
-            log.sick_hours || '',
-            log.bereav_hours || '',
-            log.ot_hours || '',
-            log.jury_duty_hours || '',
-            log.unpaid_hours || ''
+            log.wd || '',
+            log.vac || '',
+            log.hol || '',
+            log.sick || '',
+            log.ber || '',
+            log.ot || '',
+            log.jury || '',
+            log.unpd || ''
         ];
     });
 
@@ -79,14 +79,14 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
         'SUBTOTALS--->', // Day
         '', '', '', '', // Times
         calculateSum('reg_hours').toString(),
-        calculateSum('wd_hours') || '',
-        calculateSum('vac_hours') || '',
-        calculateSum('hol_hours') || '',
-        calculateSum('sick_hours') || '',
-        calculateSum('bereav_hours') || '',
-        calculateSum('ot_hours') || '',
-        calculateSum('jury_duty_hours') || '',
-        calculateSum('unpaid_hours') || '',
+        calculateSum('wd') || '',
+        calculateSum('vac') || '',
+        calculateSum('hol') || '',
+        calculateSum('sick') || '',
+        calculateSum('ber') || '',
+        calculateSum('ot') || '',
+        calculateSum('jury') || '',
+        calculateSum('unpd') || '',
     ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -159,7 +159,7 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
     doc.text("HOURS THIS PERIOD", 34, boxY + 5, { align: 'center' });
 
     doc.setFontSize(16);
-    doc.text(header.total_hours.toFixed(0), 34, boxY + 15, { align: 'center' });
+    doc.text(Number(header.total_hours).toFixed(0), 34, boxY + 15, { align: 'center' });
 
 
     // COMPENSATORY TIME RATIONALE

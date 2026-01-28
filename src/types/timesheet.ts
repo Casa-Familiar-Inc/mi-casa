@@ -29,14 +29,14 @@ export interface HR_TimeSheetLog {
     lunch_in: string;
     time_out: string;
     reg_hours: number;
-    wd_hours: number;
-    vac_hours: number;
-    hol_hours: number;
-    sick_hours: number;
-    bereav_hours: number;
-    ot_hours: number;
-    jury_duty_hours: number;
-    unpaid_hours: number;
+    wd: number;
+    vac: number;
+    hol: number;
+    sick: number;
+    ber: number;
+    ot: number;
+    jury: number;
+    unpd: number;
     daily_total: number;
 }
 

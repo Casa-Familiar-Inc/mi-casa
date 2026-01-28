@@ -17,9 +17,14 @@ interface TimeOffContainerProps {
 }
 
 const REQUEST_TYPES = [
-    'Vacation', 'Personal Leave', 'Bereavement Leave', 'Jury Duty',
-    'Unpaid Leave', 'Other', 'Military Leave', 'Family and Medical Leave',
-    'Sick Time', 'Comp-Time', 'Request to Earn Comp-Time'
+    { id: 'WD', label: 'Wellness Day' },
+    { id: 'VAC', label: 'Vacation' },
+    { id: 'HOL', label: 'Holiday' },
+    { id: 'SICK', label: 'Sick Time' },
+    { id: 'BER', label: 'Bereavement Leave' },
+    { id: 'OT', label: 'Overtime' },
+    { id: 'JURY', label: 'Jury Duty' },
+    { id: 'UNPD', label: 'Unpaid Leave' }
 ];
 
 export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId }) => {
@@ -37,7 +42,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         start_date: '',
         end_date: '',
         return_date: '',
-        request_type: 'Vacation',
+        request_type: 'VAC',
         status: 'Draft'
     });
 
@@ -212,23 +217,16 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 <CardContent className="pt-6 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                         {REQUEST_TYPES.map(type => (
-                            <div key={type} className="flex items-center space-x-2">
+                            <div key={type.id} className="flex items-center space-x-2">
                                 <Checkbox
-                                    id={type}
-                                    checked={formData.request_type === type}
-                                    onCheckedChange={() => handleChange('request_type', type)}
+                                    id={type.id}
+                                    checked={formData.request_type === type.id}
+                                    onCheckedChange={() => handleChange('request_type', type.id)}
                                 />
-                                <Label htmlFor={type} className="cursor-pointer">{type.toUpperCase()}</Label>
+                                <Label htmlFor={type.id} className="cursor-pointer">{type.label.toUpperCase()}</Label>
                             </div>
                         ))}
                     </div>
-
-                    {formData.request_type === 'Other' && (
-                        <div className="space-y-2">
-                            <Label>OTHER DETAILS:</Label>
-                            <Input value={formData.other_type_details} onChange={(e) => handleChange('other_type_details', e.target.value)} />
-                        </div>
-                    )}
 
                     <div className="space-y-2">
                         <Label>REASON:</Label>

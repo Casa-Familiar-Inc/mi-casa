@@ -182,30 +182,26 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const applyTimeOffToLogs = (currentLogs: HR_TimeSheetLog[], requests: HR_TimeOffRequest[]) => {
         const newLogs = [...currentLogs];
         const mapping: Record<string, keyof HR_TimeSheetLog> = {
-            'Vacation': 'vac_hours',
-            'Sick Time': 'sick_hours',
-            'Bereavement Leave': 'bereav_hours',
-            'Jury Duty': 'jury_duty_hours',
-            'Unpaid Leave': 'unpaid_hours',
-            'Personal Leave': 'wd_hours',
-            'Comp-Time': 'wd_hours',
-            'Other': 'unpaid_hours',
-            'Military Leave': 'unpaid_hours',
-            'Family and Medical Leave': 'unpaid_hours'
+            'VAC': 'vac',
+            'SICK': 'sick',
+            'BER': 'ber',
+            'JURY': 'jury',
+            'UNPD': 'unpd',
+            'WD': 'wd',
+            'OT': 'ot',
+            'HOL': 'hol'
         };
 
         requests.forEach(req => {
-            const field = mapping[req.request_type] || 'unpaid_hours';
+            const field = mapping[req.request_type] || 'unpd';
             const start = new Date(req.start_date + 'T00:00:00');
             const end = new Date(req.end_date + 'T00:00:00');
 
             newLogs.forEach((log, idx) => {
                 const logDate = new Date(log.date + 'T00:00:00');
                 if (logDate >= start && logDate <= end) {
-                    // Check if weekend (if we should only apply to business days? the user example says "blocks 26, 27, 28" which are work days if 23 is friday)
-                    // The generateEmptyLogs already identifies weekend.
                     const isWeekend = logDate.getDay() === 0 || logDate.getDay() === 6;
-                    if (isWeekend && req.request_type !== 'Other') return; // Skip weekends for most leaves
+                    if (isWeekend) return; // Skip weekends for all leaves
 
                     // Populate hours
                     const hours = req.total_hours_requested > 8 ? 8 : req.total_hours_requested;
@@ -300,8 +296,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 time_out: isWeekend ? '' : (settings?.default_time_out || '17:00'),
                 reg_hours: isWeekend ? 0 : 8,
                 daily_total: isWeekend ? 0 : 8,
-                wd_hours: 0, vac_hours: 0, hol_hours: 0, sick_hours: 0,
-                bereav_hours: 0, ot_hours: 0, jury_duty_hours: 0, unpaid_hours: 0
+                wd: 0, vac: 0, hol: 0, sick: 0,
+                ber: 0, ot: 0, jury: 0, unpd: 0
             });
             current.setDate(current.getDate() + 1);
         }
@@ -313,7 +309,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
         // Prevent negative values
         let sanitizedValue = value;
-        const isLeaveField = ['wd_hours', 'vac_hours', 'hol_hours', 'sick_hours', 'bereav_hours', 'ot_hours', 'jury_duty_hours', 'unpaid_hours'].includes(field);
+        const isLeaveField = ['wd', 'vac', 'hol', 'sick', 'ber', 'ot', 'jury', 'unpd'].includes(field);
 
         if (isLeaveField) {
             if (value && parseFloat(value) < 0) sanitizedValue = '0';
@@ -367,9 +363,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
             // Calculate Total Hours properly
             const totalHours = logs.reduce((sum, l) => sum +
-                Number(l.reg_hours || 0) + Number(l.wd_hours || 0) + Number(l.vac_hours || 0) +
-                Number(l.hol_hours || 0) + Number(l.sick_hours || 0) + Number(l.bereav_hours || 0) +
-                Number(l.ot_hours || 0) + Number(l.jury_duty_hours || 0) + Number(l.unpaid_hours || 0)
+                Number(l.reg_hours || 0) + Number(l.wd || 0) + Number(l.vac || 0) +
+                Number(l.hol || 0) + Number(l.sick || 0) + Number(l.ber || 0) +
+                Number(l.ot || 0) + Number(l.jury || 0) + Number(l.unpd || 0)
                 , 0);
 
             const p = periods.find(x => x.key === selectedPeriodKey);
@@ -624,9 +620,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     };
 
     const hoursThisPeriod = logs.reduce((sum, l) => sum +
-        Number(l.reg_hours || 0) + Number(l.wd_hours || 0) + Number(l.vac_hours || 0) +
-        Number(l.hol_hours || 0) + Number(l.sick_hours || 0) + Number(l.bereav_hours || 0) +
-        Number(l.ot_hours || 0) + Number(l.jury_duty_hours || 0) + Number(l.unpaid_hours || 0)
+        Number(l.reg_hours || 0) + Number(l.wd || 0) + Number(l.vac || 0) +
+        Number(l.hol || 0) + Number(l.sick || 0) + Number(l.ber || 0) +
+        Number(l.ot || 0) + Number(l.jury || 0) + Number(l.unpd || 0)
         , 0).toFixed(2);
 
 
@@ -874,58 +870,58 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                         {/* LEAVE INPUTS - Blocked if THIS SPECIFIC field is the one locked */}
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.wd_hours} onChange={(e) => handleLogChange(idx, 'wd_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.wd} onChange={(e) => handleLogChange(idx, 'wd', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.vac_hours} onChange={(e) => handleLogChange(idx, 'vac_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.vac} onChange={(e) => handleLogChange(idx, 'vac', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.hol_hours} onChange={(e) => handleLogChange(idx, 'hol_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.hol} onChange={(e) => handleLogChange(idx, 'hol', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.sick_hours} onChange={(e) => handleLogChange(idx, 'sick_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.sick} onChange={(e) => handleLogChange(idx, 'sick', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'bereav_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'bereav_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.bereav_hours} onChange={(e) => handleLogChange(idx, 'bereav_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ber')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ber')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.ber} onChange={(e) => handleLogChange(idx, 'ber', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.ot_hours} onChange={(e) => handleLogChange(idx, 'ot_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.ot} onChange={(e) => handleLogChange(idx, 'ot', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury_duty_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury_duty_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.jury_duty_hours} onChange={(e) => handleLogChange(idx, 'jury_duty_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.jury} onChange={(e) => handleLogChange(idx, 'jury', e.target.value)}
                                             />
                                         </TableCell>
                                         <TableCell className="p-1">
                                             <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpaid_hours')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpaid_hours')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.unpaid_hours} onChange={(e) => handleLogChange(idx, 'unpaid_hours', e.target.value)}
+                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpd')}
+                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpd')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
+                                                type="number" min={0} value={log.unpd} onChange={(e) => handleLogChange(idx, 'unpd', e.target.value)}
                                             />
                                         </TableCell>
                                     </TableRow>
@@ -934,14 +930,14 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 <TableRow className="font-bold bg-muted/50">
                                     <TableCell colSpan={6} className="p-2 text-right">TOTALS</TableCell>
                                     <TableCell className="p-2">{calculateColumnTotal('reg_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('wd_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('vac_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('hol_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('sick_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('bereav_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('ot_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('jury_duty_hours')}</TableCell>
-                                    <TableCell className="p-2">{calculateColumnTotal('unpaid_hours')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('wd')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('vac')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('hol')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('sick')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('ber')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('ot')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('jury')}</TableCell>
+                                    <TableCell className="p-2">{calculateColumnTotal('unpd')}</TableCell>
                                 </TableRow>
                             </TableBody>
                         </Table>
