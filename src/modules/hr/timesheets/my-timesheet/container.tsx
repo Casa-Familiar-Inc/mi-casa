@@ -92,6 +92,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         default_time_out: '17:00'
     });
 
+
     useEffect(() => {
         if (currentUserEmail) {
             init();
@@ -106,7 +107,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             setPeriods(availablePeriods);
 
             // 2. Load Settings
-            const settings = await TimeSheetService.getUserSettings(currentUserEmail);
+            const settingsEmail = userEmail || currentUserEmail;
+            const settings = await TimeSheetService.getUserSettings(settingsEmail);
             setUserSettings(settings);
 
             // 3. Load Data
@@ -125,18 +127,10 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     setCompTimeEntries(data.compTime);
                     setAdditionalInfo(data.header.additional_info || '');
 
-                    // Try to match period to dropdown
-                    // The generatePeriods function creates keys like "2023-12-01|2023-12-15" (if that was your logic? let's check generatePeriods)
-                    // Wait, generatePeriods creates keys implicitly? 
-                    // Let's look at generatePeriods again. It returns { key, ... }.
-                    // We need to find the period that matches the header's start/end.
-
                     const match = availablePeriods.find(p => p.start === data.header.period_start);
                     if (match) {
                         setSelectedPeriodKey(match.key);
                     } else {
-                        // If outside range, maybe insert a custom option or just show "Unknown Period"? 
-                        // For now we just don't select one or select empty.
                         setSelectedPeriodKey('');
                     }
                 }
@@ -144,6 +138,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 // DEFAULT LOAD (Current Period)
                 const current = availablePeriods[0];
                 setSelectedPeriodKey(current.key);
+                // Important: loadTimeSheet handles the null case (new timesheet)
                 await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end, settings || undefined);
             }
 
@@ -524,6 +519,15 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         }
     };
 
+    const handleDownloadPDF = () => {
+        if (!header || !logs.length) {
+            toast.error("No timesheet data to export");
+            return;
+        }
+        generateTimeSheetPDF(header, logs);
+        toast.success("PDF Exported");
+    };
+
     const handleOpenSettings = () => {
         if (userSettings) {
             setTempSettings({ ...userSettings });
@@ -550,15 +554,6 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             console.error(error);
             toast.error("Failed to save settings");
         }
-    };
-
-    const handleDownloadPDF = () => {
-        if (!header || !logs.length) {
-            toast.error("No timesheet data to export");
-            return;
-        }
-        generateTimeSheetPDF(header, logs);
-        toast.success("PDF Exported");
     };
 
     const handleSupervisorApprove = async () => {
@@ -728,7 +723,6 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
             {/* ACTION TOOLBAR */}
             <ActionToolbar
                 title={isSupervisorView ? `Reviewing: ${header?.employee_name || userEmail}` : "Employee Time Sheet"}
@@ -762,7 +756,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                             </>
                         )}
 
-                        {/* EMPLOYEE ACTIONS */}
+                        {/* EMPLOYEE ACTIONS - STRICT OWNER ONLY */}
                         {!isSupervisorView && (header?.status === 'Draft' || header?.status === 'Rejected' || !header?.status) && (
                             <>
                                 <Button variant="outline" onClick={() => handleSave('Draft')}>Save Draft</Button>
@@ -789,21 +783,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             {/* INFO & SELECTOR */}
             <div className="flex justify-between items-end">
                 <div>
-                    <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || currentUserName}</span></div>
+                    <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || (isSupervisorView ? (userEmail || 'Loading...') : currentUserName)}</span></div>
                     <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
-                </div>
-                <div className="w-72">
-                    <div className="text-sm font-semibold text-right mb-1">Period Selection</div>
-                    <Select value={selectedPeriodKey} onValueChange={handlePeriodChange}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {periods.map(p => (
-                                <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
                 </div>
             </div>
 
