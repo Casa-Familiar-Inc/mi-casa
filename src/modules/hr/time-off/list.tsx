@@ -13,6 +13,8 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
+import { Trash2, Eye, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export const TimeOffList = () => {
     const { data: identity } = useGetIdentity<{ email: string, name: string }>();
@@ -33,11 +35,45 @@ export const TimeOffList = () => {
         setIsLoading(false);
     };
 
+    const handleDelete = async (id: string) => {
+        if (!window.confirm("Are you sure you want to delete this request? This action cannot be undone.")) {
+            return;
+        }
+
+        try {
+            await TimeOffService.deleteRequest(id);
+            toast.success("Request deleted successfully");
+            if (identity?.email) {
+                loadData(identity.email);
+            }
+        } catch (error: any) {
+            toast.error(error.message || "Failed to delete request");
+        }
+    };
+
+    const handleWithdraw = async (id: string) => {
+        if (!window.confirm("Are you sure you want to withdraw this request?")) {
+            return;
+        }
+
+        try {
+            await TimeOffService.updateStatus(id, 'Withdrawn', undefined, 'Employee');
+            toast.success("Request withdrawn successfully");
+            if (identity?.email) {
+                loadData(identity.email);
+            }
+        } catch (error: any) {
+            toast.error(error.message || "Failed to withdraw request");
+        }
+    };
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'Approved': return 'bg-green-100 text-green-800';
+            case 'Pending': return 'bg-blue-100 text-blue-800';
             case 'Rejected': return 'bg-red-100 text-red-800';
-            case 'Pending': return 'bg-yellow-100 text-yellow-800';
+            case 'Withdrawn': return 'bg-amber-100 text-amber-800';
+            case 'Cancelled': return 'bg-gray-100 text-gray-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
@@ -86,10 +122,30 @@ export const TimeOffList = () => {
                                                     {r.status}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="text-right">
+                                            <TableCell className="text-right flex justify-end gap-2">
                                                 <Button variant="ghost" size="sm" onClick={() => go({ to: `/hr/time-off/view/${r.id}` })}>
-                                                    View
+                                                    <Eye className="h-4 w-4 mr-1" /> View
                                                 </Button>
+                                                {(r.status === 'Draft' || r.status === 'Pending') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => handleDelete(r.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                                    </Button>
+                                                )}
+                                                {(r.status === 'Pending' || r.status === 'Approved') && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                                        onClick={() => handleWithdraw(r.id)}
+                                                    >
+                                                        <RotateCcw className="h-4 w-4 mr-1" /> Retract
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))}

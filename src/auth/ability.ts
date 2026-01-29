@@ -9,7 +9,9 @@ export type Subjects =
     | "Supervisor"
     | "IT"
     | "HR"
+    | "CompanyCalendar"
     | "all";
+
 
 export type Actions = "manage" | "create" | "read" | "update" | "delete" | "list" | "show" | "edit";
 
@@ -25,6 +27,7 @@ export interface UserPayload {
     role?: string | null;
     isSupervisor: boolean;
     allowedScreens: string[];
+    directReports?: string[] | string | null;
 }
 
 export function defineAbilityFor(user: UserPayload) {
@@ -72,9 +75,16 @@ export function defineAbilityFor(user: UserPayload) {
         can("show", "loans");
     }
 
-    if (screens.includes("Supervisor")) {
+    if (user.isSupervisor || screens.includes("Supervisor")) {
         can("list", "Supervisor");
         can("show", "Supervisor");
+        can("manage", "Supervisor");
+    }
+
+    if (user.isSupervisor || screens.includes("TimeOffApprovals")) {
+        can("list", "TimeOffApprovals");
+        can("show", "TimeOffApprovals");
+        can("manage", "TimeOffApprovals");
     }
 
     if (screens.includes("employees")) {
@@ -84,6 +94,13 @@ export function defineAbilityFor(user: UserPayload) {
     if (screens.includes("it-category")) {
         can("manage", "it-category");
     }
+
+    if (screens.includes("CompanyCalendar")) {
+        can("list", "CompanyCalendar");
+        can("show", "CompanyCalendar");
+        can("manage", "CompanyCalendar");
+    }
+
 
     // HR Role Specials
     if (role === 'hr') {

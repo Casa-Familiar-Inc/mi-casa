@@ -110,6 +110,10 @@ export const TimeSheetService = {
                     total_hours: 0,
                 }),
             });
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.message || "Failed to create timesheet");
+            }
             const header = await response.json();
 
             await AuditService.log({

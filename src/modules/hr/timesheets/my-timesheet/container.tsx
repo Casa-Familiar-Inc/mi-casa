@@ -9,6 +9,8 @@ import {
 } from '../../../../types/timesheet';
 import { HR_TimeOffRequest } from '../../../../types/timeoff';
 import { TimeOffService } from '../../../../services/timeOffService';
+import { HolidayService } from '../../../../services/HolidayService';
+
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { generateTimeSheetPDF } from '../../../../utils/TimeSheetPDF';
@@ -36,7 +38,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useGetIdentity, useGo, usePermissions } from '@refinedev/core';
 import { toast } from "sonner";
-import { Settings, Download } from 'lucide-react';
+import { Settings, Download, Calendar } from 'lucide-react';
 import { ActionToolbar } from '@/components/common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../../../utils/graphEmail';
 import { authClient } from '../../../../lib/auth';
@@ -118,12 +120,22 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 if (data) {
                     setHeader(data.header);
 
+                    const approvedTimeOff = await TimeOffService.getApprovedRequestsByPeriod(settingsEmail, data.header.period_start, data.header.period_end);
+                    const companyHolidays = await HolidayService.getHolidaysByRange(data.header.period_start, data.header.period_end);
+
+                    let enrichedLogs: HR_TimeSheetLog[] = [];
                     if (data.logs && data.logs.length > 0) {
-                        setLogs(data.logs);
+                        enrichedLogs = applyTimeOffToLogs(data.logs, approvedTimeOff);
                     } else {
                         // If header exists but logs don't (newly created), generate them
-                        setLogs(generateEmptyLogs(data.header.period_start, data.header.period_end, settings || undefined));
+                        const emptyLogs = generateEmptyLogs(data.header.period_start, data.header.period_end, settings || undefined);
+                        enrichedLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
                     }
+
+                    // Apply Global Company Holidays
+                    enrichedLogs = applyCompanyHolidaysToLogs(enrichedLogs, companyHolidays);
+                    setLogs(enrichedLogs);
+
                     setCompTimeEntries(data.compTime);
                     setAdditionalInfo(data.header.additional_info || '');
 
@@ -162,22 +174,28 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const loadTimeSheet = async (email: string, start: string, end: string, settings?: HR_EmployeeSettings) => {
         const data = await TimeSheetService.getTimeSheet(email, start);
         const approvedTimeOff = await TimeOffService.getApprovedRequestsByPeriod(email, start, end);
+        const companyHolidays = await HolidayService.getHolidaysByRange(start, end);
+
+        let finalLogs: HR_TimeSheetLog[] = [];
 
         if (data) {
             setHeader(data.header);
-            const appliedLogs = applyTimeOffToLogs(data.logs, approvedTimeOff);
-            setLogs(appliedLogs);
+            finalLogs = applyTimeOffToLogs(data.logs, approvedTimeOff);
             setCompTimeEntries(data.compTime);
             setAdditionalInfo(data.header.additional_info || '');
         } else {
             setHeader(null);
             setCompTimeEntries([{ id: '', header: '', date: '', rationale: '' }]); // Start with 1 empty
             const emptyLogs = generateEmptyLogs(start, end, settings);
-            const appliedLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
-            setLogs(appliedLogs);
+            finalLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
             setAdditionalInfo('');
         }
+
+        // Apply Global Company Holidays (Template)
+        finalLogs = applyCompanyHolidaysToLogs(finalLogs, companyHolidays);
+        setLogs(finalLogs);
     };
+
 
     const applyTimeOffToLogs = (currentLogs: HR_TimeSheetLog[], requests: HR_TimeOffRequest[]) => {
         const newLogs = [...currentLogs];
@@ -227,6 +245,55 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
         return newLogs;
     };
+
+    const applyCompanyHolidaysToLogs = (currentLogs: HR_TimeSheetLog[], holidays: any[]) => {
+        const newLogs = [...currentLogs];
+        const mapping: Record<string, keyof HR_TimeSheetLog> = {
+            'HOL': 'hol',
+            'VAC': 'vac',
+            'WD': 'wd'
+        };
+
+        holidays.forEach(h => {
+            const field = mapping[h.concept] || 'hol';
+
+            // Extract YYYY-MM-DD reliably from Date object or ISO string in LOCAL context
+            const dateObj = typeof h.date === 'string' ? new Date(h.date.includes('T') ? h.date : h.date + 'T00:00:00') : h.date;
+            const hDate = dateObj.toLocaleDateString('en-CA');
+
+            newLogs.forEach((log, idx) => {
+                // log.date is already YYYY-MM-DD or needs normalizing
+                const logDateObj = typeof log.date === 'string' ? new Date(log.date + 'T00:00:00') : log.date;
+                const logDate = logDateObj.toLocaleDateString('en-CA');
+
+                if (logDate === hDate) {
+                    // Populate hours (default to 8 for global holidays)
+                    const hours = 8;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any)[field] = hours;
+
+                    // Clear and Lock regular time fields
+                    newLogs[idx].time_in = '';
+                    newLogs[idx].lunch_out = '';
+                    newLogs[idx].lunch_in = '';
+                    newLogs[idx].time_out = '';
+                    newLogs[idx].reg_hours = 0;
+                    newLogs[idx].daily_total = hours;
+
+                    // Add meta to indicate it's locked by Company Calendar
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any).is_company_locked = true;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any).holiday_name = h.name;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    (newLogs[idx] as any).locked_field = field;
+                }
+            });
+        });
+
+        return newLogs;
+    };
+
 
     /**
      * READ-ONLY LOGIC:
@@ -283,7 +350,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
         const current = new Date(start);
         while (current <= end) {
-            const dateStr = current.toISOString().split('T')[0];
+            const dateStr = current.toLocaleDateString('en-CA');
             const dayName = days[current.getDay()];
             const isWeekend = current.getDay() === 0 || current.getDay() === 6;
 
@@ -312,7 +379,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         const isLeaveField = ['wd', 'vac', 'hol', 'sick', 'ber', 'ot', 'jury', 'unpd'].includes(field);
 
         if (isLeaveField) {
-            if (value && parseFloat(value) < 0) sanitizedValue = '0';
+            return; // Strict locking: Leave fields can only be updated via Time-Off Requests
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -817,115 +884,129 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {logs.map((log, idx) => (
-                                    <TableRow key={idx} className={(log as any).is_timeoff_locked ? "bg-amber-50/20" : ""}>
-                                        <TableCell className="p-2 text-muted-foreground">{log.date}</TableCell>
-                                        <TableCell className="p-2 text-muted-foreground">{log.day_name}</TableCell>
+                                {logs.map((log, idx) => {
+                                    const isTimeOffLocked = (log as any).is_timeoff_locked;
+                                    const isCompanyLocked = (log as any).is_company_locked;
+                                    const isLocked = isTimeOffLocked || isCompanyLocked;
+                                    const holidayName = (log as any).holiday_name;
 
-                                        {/* TIME INPUTS - Blocked if ANY Time Off applied to this day */}
-                                        <TableCell className="p-1">
-                                            <Input
-                                                type="time"
-                                                onFocus={showTimePicker}
-                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
-                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
-                                                value={log.time_in}
-                                                onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                type="time"
-                                                onFocus={showTimePicker}
-                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
-                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
-                                                value={log.lunch_out}
-                                                onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                type="time"
-                                                onFocus={showTimePicker}
-                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
-                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
-                                                value={log.lunch_in}
-                                                onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                type="time"
-                                                onFocus={showTimePicker}
-                                                readOnly={isReadOnly || (log as any).is_timeoff_locked}
-                                                className={`h-7 text-xs text-center ${(isReadOnly || (log as any).is_timeoff_locked) ? 'bg-muted opacity-60' : ''}`}
-                                                value={log.time_out}
-                                                onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)}
-                                            />
-                                        </TableCell>
+                                    return (
+                                        <TableRow
+                                            key={idx}
+                                            className={`${isTimeOffLocked ? "bg-amber-100/30" : ""} ${isCompanyLocked ? "bg-blue-100/40 border-l-4 border-l-blue-500" : ""}`}
+                                            title={isCompanyLocked ? `Company Holiday: ${holidayName}` : ""}
+                                        >
+                                            <TableCell className="p-2 text-muted-foreground flex items-center gap-1">
+                                                {log.date}
+                                                {isCompanyLocked && <Calendar className="h-3 w-3 text-blue-500" />}
+                                            </TableCell>
+                                            <TableCell className="p-2 text-muted-foreground">{log.day_name}</TableCell>
 
-                                        {/* READ ONLY REG */}
-                                        <TableCell className="p-1 font-bold bg-blue-50/30 text-foreground">{log.reg_hours?.toString()}</TableCell>
+                                            {/* TIME INPUTS - Blocked if ANY Time Off or Company Holiday applied to this day */}
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    type="time"
+                                                    onFocus={showTimePicker}
+                                                    readOnly={isReadOnly || isLocked}
+                                                    className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
+                                                    value={log.time_in}
+                                                    onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    type="time"
+                                                    onFocus={showTimePicker}
+                                                    readOnly={isReadOnly || isLocked}
+                                                    className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
+                                                    value={log.lunch_out}
+                                                    onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    type="time"
+                                                    onFocus={showTimePicker}
+                                                    readOnly={isReadOnly || isLocked}
+                                                    className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
+                                                    value={log.lunch_in}
+                                                    onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    type="time"
+                                                    onFocus={showTimePicker}
+                                                    readOnly={isReadOnly || isLocked}
+                                                    className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
+                                                    value={log.time_out}
+                                                    onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)}
+                                                />
+                                            </TableCell>
 
-                                        {/* LEAVE INPUTS - Blocked if THIS SPECIFIC field is the one locked */}
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'wd')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.wd} onChange={(e) => handleLogChange(idx, 'wd', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'vac')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.vac} onChange={(e) => handleLogChange(idx, 'vac', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'hol')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.hol} onChange={(e) => handleLogChange(idx, 'hol', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'sick')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.sick} onChange={(e) => handleLogChange(idx, 'sick', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ber')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ber')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.ber} onChange={(e) => handleLogChange(idx, 'ber', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'ot')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.ot} onChange={(e) => handleLogChange(idx, 'ot', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'jury')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.jury} onChange={(e) => handleLogChange(idx, 'jury', e.target.value)}
-                                            />
-                                        </TableCell>
-                                        <TableCell className="p-1">
-                                            <Input
-                                                readOnly={isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpd')}
-                                                className={`h-7 text-xs text-center px-1 ${(isReadOnly || ((log as any).is_timeoff_locked && (log as any).locked_field === 'unpd')) ? 'bg-amber-100/50 font-bold border-amber-300' : ''}`}
-                                                type="number" min={0} value={log.unpd} onChange={(e) => handleLogChange(idx, 'unpd', e.target.value)}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                            {/* READ ONLY REG */}
+                                            <TableCell className="p-1 font-bold bg-blue-50/30 text-foreground">{log.reg_hours?.toString()}</TableCell>
+
+                                            {/* LEAVE INPUTS - STRICTLY BLOCKED (Only via Time-Off Request) */}
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.wd}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.vac}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.hol}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.sick}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.ber}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.ot}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.jury}
+                                                />
+                                            </TableCell>
+                                            <TableCell className="p-1">
+                                                <Input
+                                                    readOnly={true}
+                                                    className="h-7 text-xs text-center px-1 bg-amber-50/30"
+                                                    type="number" min={0} value={log.unpd}
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
                                 {/* TOTALS ROW */}
                                 <TableRow className="font-bold bg-muted/50">
                                     <TableCell colSpan={6} className="p-2 text-right">TOTALS</TableCell>

@@ -11,6 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface TimeOffContainerProps {
     requestId?: string;
@@ -45,6 +48,8 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         request_type: 'VAC',
         status: 'Draft'
     });
+    const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
+    const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
 
     useEffect(() => {
         if (requestId) {
@@ -54,11 +59,40 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         }
     }, [requestId, identity]);
 
+    useEffect(() => {
+        if (identity?.email && formData.start_date && formData.end_date) {
+            fetchOverlappingRequests();
+        }
+    }, [identity?.email, formData.start_date, formData.end_date]);
+
+    const fetchOverlappingRequests = async () => {
+        if (!identity?.email || !formData.start_date || !formData.end_date) return;
+        const requests = await TimeOffService.getActiveRequestsByPeriod(
+            identity.email,
+            formData.start_date,
+            formData.end_date
+        );
+        // Filter out current request if editing
+        setOverlappingRequests(requests.filter(r => r.id !== requestId));
+    };
+
     const loadRequest = async (id: string) => {
         setIsLoading(true);
         const data = await TimeOffService.getRequestById(id);
         if (data) {
             setFormData(data);
+
+            // Infer mode
+            const startStr = data.start_date || '';
+            const endStr = data.end_date || '';
+            const hours = Number(data.total_hours_requested || 0);
+
+            if (startStr === endStr) {
+                if (hours < 8) setRequestMode('PARTIAL_DAY');
+                else setRequestMode('SINGLE_DAY');
+            } else {
+                setRequestMode('FULL_DAYS');
+            }
         }
         setIsLoading(false);
     };
@@ -85,9 +119,26 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         setFormData(prev => {
             const newData = { ...prev, [field]: value };
 
-            // Mirror end date if start date changes and end date is empty or was same as start
-            if (field === 'start_date' && (!prev.end_date || prev.end_date === prev.start_date)) {
+            if (requestMode === 'SINGLE_DAY' || requestMode === 'PARTIAL_DAY') {
+                newData.start_date = value;
                 newData.end_date = value;
+            } else {
+                // FULL_DAYS mode
+                // Mirror end date if start date changes and end date is empty or was same as start
+                if (field === 'start_date' && (!prev.end_date || prev.end_date === prev.start_date)) {
+                    newData.end_date = value;
+                }
+
+                // Ensure end_date is not before start_date
+                if (newData.start_date && newData.end_date && newData.end_date < newData.start_date) {
+                    if (field === 'end_date') {
+                        toast.error("End date cannot be before start date");
+                        return prev;
+                    } else {
+                        // if start changed to after end, push end to match start
+                        newData.end_date = newData.start_date;
+                    }
+                }
             }
 
             // Sync return date to end date + 1 business day (simple version: +1 day)
@@ -103,10 +154,88 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
             // Recalculate days
             const days = calculateBusinessDays(newData.start_date || '', newData.end_date || '');
             newData.num_days_requested = days;
-            newData.total_hours_requested = days * 8;
+
+            if (requestMode !== 'PARTIAL_DAY') {
+                newData.total_hours_requested = days * 8;
+            } else {
+                // For partial, if it was empty, default to 4 maybe? Or keep existing.
+                if (!newData.total_hours_requested) newData.total_hours_requested = 8;
+            }
 
             return newData;
         });
+    };
+
+    const handleModeChange = (newMode: string) => {
+        const mode = newMode as typeof requestMode;
+        setRequestMode(mode);
+
+        setFormData(prev => {
+            const upd = { ...prev };
+            if (mode === 'SINGLE_DAY') {
+                upd.end_date = upd.start_date;
+                upd.num_days_requested = 1;
+                upd.total_hours_requested = 8;
+            } else if (mode === 'PARTIAL_DAY') {
+                upd.end_date = upd.start_date;
+                upd.num_days_requested = 1;
+                // Leave hours as is or default to 4 if at 8
+                if (upd.total_hours_requested === 8 || !upd.total_hours_requested) {
+                    upd.total_hours_requested = 4;
+                }
+            } else if (mode === 'FULL_DAYS') {
+                // If switching back to full and start/end are same, maybe leave it or reset end?
+                const days = calculateBusinessDays(upd.start_date || '', upd.end_date || '');
+                upd.num_days_requested = days;
+                upd.total_hours_requested = days * 8;
+            }
+            return upd;
+        });
+    };
+
+    const validateHourCap = () => {
+        if (!formData.start_date || !formData.end_date) return true;
+
+        const start = new Date(formData.start_date + 'T00:00:00');
+        const end = new Date(formData.end_date + 'T00:00:00');
+        const dailyCap = 8;
+
+        // Map existing hours by date
+        const existingHours: Record<string, number> = {};
+        overlappingRequests.forEach(req => {
+            const reqStart = new Date(req.start_date + 'T00:00:00');
+            const reqEnd = new Date(req.end_date + 'T00:00:00');
+            const reqHoursTotal = Number(req.total_hours_requested || 0);
+            const reqDays = calculateBusinessDays(req.start_date, req.end_date) || 1;
+            const hoursPerDay = reqHoursTotal / reqDays;
+
+            const cur = new Date(reqStart);
+            while (cur <= reqEnd) {
+                if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+                    const dateStr = cur.toLocaleDateString('en-CA');
+                    existingHours[dateStr] = (existingHours[dateStr] || 0) + hoursPerDay;
+                }
+                cur.setDate(cur.getDate() + 1);
+            }
+        });
+
+        // Check new request against cap
+        const cur = new Date(start);
+        while (cur <= end) {
+            if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+                const dateStr = cur.toLocaleDateString('en-CA');
+                const existing = existingHours[dateStr] || 0;
+                const newRequested = requestMode === 'PARTIAL_DAY' ?
+                    Number(formData.total_hours_requested || 0) : 8;
+
+                if (existing + newRequested > dailyCap) {
+                    toast.error(`Total hours for ${dateStr} would exceed ${dailyCap} (currently has ${existing.toFixed(1)} hrs requested)`);
+                    return false;
+                }
+            }
+            cur.setDate(cur.getDate() + 1);
+        }
+        return true;
     };
 
     const handleSave = async (status: 'Draft' | 'Pending' = 'Draft') => {
@@ -123,6 +252,21 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
             }
             if (!formData.employee_signature) {
                 toast.error("Employee signature is required for submission");
+                return;
+            }
+
+            if (formData.start_date && formData.end_date && formData.end_date < formData.start_date) {
+                toast.error("The selected date range is invalid (End date is before Start date)");
+                return;
+            }
+
+            if (requestMode === 'FULL_DAYS' && formData.start_date === formData.end_date) {
+                toast.error("FULL DAYS mode requires a range of at least 2 days. For a single day, please use SINGLE DAY mode.");
+                return;
+            }
+
+            // High-priority: Hour Cap Validation
+            if (!validateHourCap()) {
                 return;
             }
         }
@@ -156,59 +300,136 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
+            {/* 1. EMPLOYEE PROFILE */}
             <Card>
-                <CardHeader className="bg-black text-white py-2">
-                    <CardTitle className="text-center uppercase text-sm">Employee Information</CardTitle>
+                <CardHeader className="bg-muted py-2">
+                    <CardTitle className="uppercase text-xs font-bold">Employee Profile</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
-                    <div className="space-y-2">
-                        <Label>NAME:</Label>
+                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
                         <Input value={formData.employee_name} onChange={(e) => handleChange('employee_name', e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                        <Label>TODAY'S DATE:</Label>
-                        <Input type="date" value={formData.today_date} onChange={(e) => handleChange('today_date', e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                        <Label>DEPARTMENT:</Label>
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
                         <Input value={formData.department} onChange={(e) => handleChange('department', e.target.value)} />
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-2">
-                            <Label>VACATION DAYS AVAILABLE:</Label>
-                            <Input type="number" value={formData.vacation_days_available} onChange={(e) => handleChange('vacation_days_available', parseFloat(e.target.value))} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>AS OF (DATE):</Label>
-                            <Input type="date" value={formData.as_of_date} onChange={(e) => handleChange('as_of_date', e.target.value)} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-2">
-                            <Label>NUMBER OF DAYS REQUESTED:</Label>
-                            <Input type="number" value={formData.num_days_requested} onChange={(e) => handleChange('num_days_requested', parseFloat(e.target.value))} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>TOTAL HRS REQUESTED:</Label>
-                            <Input type="number" value={formData.total_hours_requested} onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value))} />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-2">
-                            <Label>STARTING ON:</Label>
-                            <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>ENDING ON:</Label>
-                            <Input type="date" value={formData.end_date} onChange={(e) => handleDateChange('end_date', e.target.value)} />
-                        </div>
-                    </div>
-                    <div className="space-y-2">
-                        <Label>I WILL RETURN TO WORK ON:</Label>
-                        <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} />
+                    <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
+                        <Input type="date" value={formData.today_date} onChange={(e) => handleChange('today_date', e.target.value)} />
                     </div>
                 </CardContent>
             </Card>
+
+            {overlappingRequests.length > 0 && status !== 'Approved' && (
+                <Alert variant="destructive" className="bg-amber-50 border-amber-200 text-amber-900">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertTitle className="text-xs font-bold uppercase">Overlapping Requests Found</AlertTitle>
+                    <AlertDescription className="text-xs">
+                        You already have {overlappingRequests.length} active request(s) for this period.
+                        Please ensure the total hours per day does not exceed 8.0 hrs.
+                    </AlertDescription>
+                </Alert>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* 2. VACATION BALANCE (Optional info) */}
+                <Card className="md:col-span-1">
+                    <CardHeader className="bg-muted py-2">
+                        <CardTitle className="uppercase text-xs font-bold">Balance Info</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4 pt-6">
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Vacation Days Available</Label>
+                            <Input type="number" value={formData.vacation_days_available} onChange={(e) => handleChange('vacation_days_available', parseFloat(e.target.value))} />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">As Of Date</Label>
+                            <Input type="date" value={formData.as_of_date} onChange={(e) => handleChange('as_of_date', e.target.value)} />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* 3. REQUEST DATES */}
+                <Card className="md:col-span-2">
+                    <CardHeader className="bg-black text-white py-2 flex flex-row items-center justify-between">
+                        <CardTitle className="uppercase text-xs font-bold">Request Details</CardTitle>
+                        <Tabs value={requestMode} onValueChange={handleModeChange} className="w-auto">
+                            <TabsList className="bg-white/10 h-7 p-0.5">
+                                <TabsTrigger value="FULL_DAYS" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                    <CalendarDays className="h-3 w-3 mr-1" /> FULL DAYS
+                                </TabsTrigger>
+                                <TabsTrigger value="SINGLE_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                    <CalendarIcon className="h-3 w-3 mr-1" /> SINGLE DAY
+                                </TabsTrigger>
+                                <TabsTrigger value="PARTIAL_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                    <Clock className="h-3 w-3 mr-1" /> PARTIAL
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+                    </CardHeader>
+                    <CardContent className="space-y-6 pt-6">
+                        {requestMode === 'FULL_DAYS' ? (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
+                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
+                                    <Input
+                                        type="date"
+                                        value={formData.end_date}
+                                        min={formData.start_date}
+                                        onChange={(e) => handleDateChange('end_date', e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
+                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} />
+                            </div>
+                        )}
+
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
+                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} />
+                        </div>
+
+                        <Separator />
+
+                        <div className={`space-y-4 p-4 rounded-lg border transition-colors ${requestMode === 'PARTIAL_DAY' ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-slate-100 border-slate-200'}`}>
+                            <div className="flex justify-between items-center">
+                                <div className="space-y-0.5">
+                                    <Label className={`text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>Total Hours Requested</Label>
+                                    <p className="text-[10px] text-muted-foreground italic">
+                                        {requestMode === 'PARTIAL_DAY' ? 'Enter the exact hours you will be away.' : 'Standard working day = 8.00 hrs.'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="number"
+                                        step="0.5"
+                                        readOnly={requestMode !== 'PARTIAL_DAY'}
+                                        className={`w-24 text-right font-bold text-lg h-9 bg-white ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600 border-blue-400 ring-2 ring-blue-100' : 'text-slate-900 border-slate-300 shadow-inner'}`}
+                                        value={formData.total_hours_requested}
+                                        onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value) || 0)}
+                                    />
+                                    <span className={`font-bold text-sm ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>HRS</span>
+                                </div>
+                            </div>
+
+                            <div className={`pt-2 border-t border-dashed flex justify-between items-center text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600' : 'text-slate-500'}`}>
+                                <span>Calculated Period:</span>
+                                <span>
+                                    {requestMode === 'PARTIAL_DAY' ? 'Partial day request' : `${formData.num_days_requested} Full working days`}
+                                </span>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
 
             <Card>
                 <CardHeader className="bg-black text-white py-2">

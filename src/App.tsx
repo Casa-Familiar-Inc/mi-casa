@@ -39,6 +39,9 @@ import { TimeOffPage } from "./modules/hr/time-off/page";
 import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { UserList } from "./modules/admin/users/list";
+import { HolidayList } from "./modules/hr/holidays/list";
+import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
+
 import { useState, useEffect } from "react";
 import { authClient } from "./lib/auth";
 import { combinedAuthProvider } from "./combinedAuthProvider";
@@ -61,7 +64,7 @@ function App() {
       const user = session.user as any;
       let hasReports = false;
       let reports = user.directReports;
-      
+
       if (typeof reports === 'string') {
         try {
           reports = JSON.parse(reports);
@@ -69,27 +72,27 @@ function App() {
           reports = [];
         }
       }
-      
+
       if (Array.isArray(reports) && reports.length > 0) {
         hasReports = true;
       }
 
       const isSup = !!user.isSupervisor || hasReports;
       const role = user.role || 'user';
-      
+
       let screens: string[] = [];
       try {
-          if (user.allowedScreens) {
-              screens = JSON.parse(user.allowedScreens);
-          }
+        if (user.allowedScreens) {
+          screens = JSON.parse(user.allowedScreens);
+        }
       } catch (e) { /* ignore */ }
 
       // Update Store (Auto-persists)
       setAuthData({
-          isSupervisor: isSup,
-          directReports: reports,
-          userRole: role,
-          allowedScreens: screens
+        isSupervisor: isSup,
+        directReports: reports,
+        userRole: role,
+        allowedScreens: screens
       });
 
     } else {
@@ -107,12 +110,12 @@ function App() {
       }
     },
     {
-        name: "employees", // User Management
-        list: "/admin/users",
-        meta: {
-            label: "Employees",
-            icon: <Users className="h-4 w-4" />
-        }
+      name: "employees", // User Management
+      list: "/admin/users",
+      meta: {
+        label: "Employees",
+        icon: <Users className="h-4 w-4" />
+      }
     },
     {
       name: "loans",
@@ -149,7 +152,15 @@ function App() {
         icon: <Calendar className="h-4 w-4" />
       },
     },
-    // We can conditionally add Supervisor here OR rely on accessControl to hide it
+    {
+      name: "TimeOffApprovals",
+      list: "/hr/time-off/approvals",
+      meta: {
+        label: "Time Off Approvals",
+        parent: "HR",
+        icon: <ShieldAlert className="h-4 w-4" />
+      },
+    },
     {
       name: "Supervisor",
       list: "/supervisor",
@@ -158,7 +169,17 @@ function App() {
         parent: "HR",
         icon: <ShieldAlert className="h-4 w-4" />
       }
+    },
+    {
+      name: "CompanyCalendar",
+      list: "/hr/holidays",
+      meta: {
+        label: "Company Calendar",
+        parent: "HR",
+        icon: <Calendar className="h-4 w-4" />
+      }
     }
+
   ];
 
   // Access Control Logic
@@ -181,34 +202,34 @@ function App() {
               accessControlProvider={{
                 can: async ({ resource, action }) => {
                   const role = userRole || 'user';
-                  
+
                   // Create the ability based on current store state
                   // Ideally we memoize this, but for now this is fine given its cheap
                   const ability = defineAbilityFor({
-                      id: 'current', 
-                      role: role,
-                      isSupervisor: isSupervisor,
-                      allowedScreens: allowedScreens,
-                      directReports: directReports
+                    id: 'current',
+                    role: role,
+                    isSupervisor: isSupervisor,
+                    allowedScreens: allowedScreens,
+                    directReports: directReports
                   });
 
                   // Map Refine actions to CASL actions if strictly needed, 
                   // but we defined 'list', 'show', etc in factory directly.
                   // Actions: list, show, edit, create, delete
-                  
+
                   // Default to 'list' if action undefined (e.g. menu)
                   const act = action || 'list';
-                  
+
                   const can = ability.can(act, resource || 'all');
-                  
+
                   // Debug logging
                   if (resource !== 'dashboard') {
-                      console.groupCollapsed(`[AccessControl] Checking ${act} on ${resource}`);
-                      console.log('User Role:', role);
-                      console.log('Allowed Screens:', allowedScreens);
-                      console.log('Result:', can);
-                      console.log('Ability Rules:', ability.rules);
-                      console.groupEnd();
+                    console.groupCollapsed(`[AccessControl] Checking ${act} on ${resource}`);
+                    console.log('User Role:', role);
+                    console.log('Allowed Screens:', allowedScreens);
+                    console.log('Result:', can);
+                    console.log('Ability Rules:', ability.rules);
+                    console.groupEnd();
                   }
 
                   return { can };
@@ -253,7 +274,10 @@ function App() {
                     <Route index element={<TimeOffList />} />
                     <Route path="new" element={<TimeOffPage />} />
                     <Route path="view/:id" element={<TimeOffPage />} />
+                    <Route path="approvals" element={<TimeOffApprovals />} />
                   </Route>
+                  <Route path="/hr/holidays" element={<HolidayList />} />
+
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                   <Route path="/admin/users" element={<UserList />} />
                 </Route>
