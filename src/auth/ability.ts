@@ -75,13 +75,13 @@ export function defineAbilityFor(user: UserPayload) {
         can("show", "loans");
     }
 
-    if (user.isSupervisor || screens.includes("Supervisor")) {
+    if (screens.includes("Supervisor")) {
         can("list", "Supervisor");
         can("show", "Supervisor");
         can("manage", "Supervisor");
     }
 
-    if (user.isSupervisor || screens.includes("TimeOffApprovals")) {
+    if (screens.includes("TimeOffApprovals")) {
         can("list", "TimeOffApprovals");
         can("show", "TimeOffApprovals");
         can("manage", "TimeOffApprovals");

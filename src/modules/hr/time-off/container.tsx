@@ -51,6 +51,8 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
     const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
 
+    const isReadOnly = !!(requestId && identity?.email && formData.employee_email && identity.email !== formData.employee_email);
+
     useEffect(() => {
         if (requestId) {
             loadRequest(requestId);
@@ -250,11 +252,6 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 toast.error("Please select start and end dates");
                 return;
             }
-            if (!formData.employee_signature) {
-                toast.error("Employee signature is required for submission");
-                return;
-            }
-
             if (formData.start_date && formData.end_date && formData.end_date < formData.start_date) {
                 toast.error("The selected date range is invalid (End date is before Start date)");
                 return;
@@ -277,7 +274,8 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 ...formData,
                 status,
                 employee_email: identity.email,
-                employee_signature_date: formData.employee_signature_date || new Date().toISOString().split('T')[0]
+                employee_signature: status === 'Pending' ? identity.name : formData.employee_signature,
+                employee_signature_date: status === 'Pending' ? new Date().toISOString().split('T')[0] : formData.employee_signature_date
             };
 
             const savedId = await TimeOffService.saveRequest(payload, identity.email);
@@ -298,8 +296,47 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         }
     };
 
+    const handleStatusUpdate = async (newStatus: 'Approved' | 'Rejected') => {
+        if (!requestId) return;
+
+        const comments = prompt(`Enter comments for ${newStatus.toLowerCase()} (optional):`);
+        if (comments === null) return; // Cancelled prompt
+
+        setIsLoading(true);
+        try {
+            await TimeOffService.updateStatus(requestId, newStatus, comments || undefined);
+            toast.success(`Request ${newStatus.toLowerCase()} successfully`);
+            go({ to: `/hr/time-off/approvals` });
+        } catch (error) {
+            console.error("Update Status Error:", error);
+            toast.error("Failed to update status");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
+            {isReadOnly && formData.status === 'Pending' && (
+                <div className="flex justify-end gap-4 p-4 bg-muted/50 rounded-lg border border-dashed">
+                    <Button
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                        onClick={() => handleStatusUpdate('Rejected')}
+                        disabled={isLoading}
+                    >
+                        Reject Request
+                    </Button>
+                    <Button
+                        className="bg-green-600 hover:bg-green-700 text-white"
+                        onClick={() => handleStatusUpdate('Approved')}
+                        disabled={isLoading}
+                    >
+                        Approve Request
+                    </Button>
+                </div>
+            )}
+
             {/* 1. EMPLOYEE PROFILE */}
             <Card>
                 <CardHeader className="bg-muted py-2">
@@ -308,15 +345,15 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
-                        <Input value={formData.employee_name} onChange={(e) => handleChange('employee_name', e.target.value)} />
+                        <Input value={formData.employee_name} onChange={(e) => handleChange('employee_name', e.target.value)} disabled={isReadOnly} />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
-                        <Input value={formData.department} onChange={(e) => handleChange('department', e.target.value)} />
+                        <Input value={formData.department} onChange={(e) => handleChange('department', e.target.value)} disabled={isReadOnly} />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
-                        <Input type="date" value={formData.today_date} onChange={(e) => handleChange('today_date', e.target.value)} />
+                        <Input type="date" value={formData.today_date} onChange={(e) => handleChange('today_date', e.target.value)} disabled={isReadOnly} />
                     </div>
                 </CardContent>
             </Card>
@@ -332,29 +369,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 </Alert>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* 2. VACATION BALANCE (Optional info) */}
-                <Card className="md:col-span-1">
-                    <CardHeader className="bg-muted py-2">
-                        <CardTitle className="uppercase text-xs font-bold">Balance Info</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pt-6">
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Vacation Days Available</Label>
-                            <Input type="number" value={formData.vacation_days_available} onChange={(e) => handleChange('vacation_days_available', parseFloat(e.target.value))} />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">As Of Date</Label>
-                            <Input type="date" value={formData.as_of_date} onChange={(e) => handleChange('as_of_date', e.target.value)} />
-                        </div>
-                    </CardContent>
-                </Card>
-
+            <div className="grid grid-cols-1 gap-6">
                 {/* 3. REQUEST DATES */}
-                <Card className="md:col-span-2">
+                <Card className="w-full">
                     <CardHeader className="bg-black text-white py-2 flex flex-row items-center justify-between">
                         <CardTitle className="uppercase text-xs font-bold">Request Details</CardTitle>
-                        <Tabs value={requestMode} onValueChange={handleModeChange} className="w-auto">
+                        <Tabs value={requestMode} onValueChange={handleModeChange} className={`w-auto ${isReadOnly ? 'pointer-events-none opacity-80' : ''}`}>
                             <TabsList className="bg-white/10 h-7 p-0.5">
                                 <TabsTrigger value="FULL_DAYS" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
                                     <CalendarDays className="h-3 w-3 mr-1" /> FULL DAYS
@@ -373,7 +393,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
-                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} />
+                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={isReadOnly} />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
@@ -382,19 +402,20 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                         value={formData.end_date}
                                         min={formData.start_date}
                                         onChange={(e) => handleDateChange('end_date', e.target.value)}
+                                        disabled={isReadOnly}
                                     />
                                 </div>
                             </div>
                         ) : (
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
-                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} />
+                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={isReadOnly} />
                             </div>
                         )}
 
                         <div className="space-y-1.5">
                             <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
-                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} />
+                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} disabled={isReadOnly} />
                         </div>
 
                         <Separator />
@@ -411,7 +432,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                     <Input
                                         type="number"
                                         step="0.5"
-                                        readOnly={requestMode !== 'PARTIAL_DAY'}
+                                        readOnly={true}
                                         className={`w-24 text-right font-bold text-lg h-9 bg-white ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600 border-blue-400 ring-2 ring-blue-100' : 'text-slate-900 border-slate-300 shadow-inner'}`}
                                         value={formData.total_hours_requested}
                                         onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value) || 0)}
@@ -443,6 +464,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                     id={type.id}
                                     checked={formData.request_type === type.id}
                                     onCheckedChange={() => handleChange('request_type', type.id)}
+                                    disabled={isReadOnly}
                                 />
                                 <Label htmlFor={type.id} className="cursor-pointer">{type.label.toUpperCase()}</Label>
                             </div>
@@ -451,12 +473,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
                     <div className="space-y-2">
                         <Label>REASON:</Label>
-                        <Input value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} />
+                        <Input value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} disabled={isReadOnly} />
                     </div>
 
                     <div className="space-y-2">
                         <Label>COMMENTS:</Label>
-                        <Textarea value={formData.comments} onChange={(e) => handleChange('comments', e.target.value)} />
+                        <Textarea value={formData.comments} onChange={(e) => handleChange('comments', e.target.value)} disabled={isReadOnly} />
                     </div>
                 </CardContent>
             </Card>
@@ -470,20 +492,23 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Employee Signature:</Label>
-                            <Input value={formData.employee_signature} onChange={(e) => handleChange('employee_signature', e.target.value)} />
+                            <Input value={formData.employee_signature || identity?.name || ''} readOnly className="bg-muted" />
                         </div>
                         <div className="space-y-2">
                             <Label>Date:</Label>
-                            <Input type="date" value={formData.employee_signature_date} onChange={(e) => handleChange('employee_signature_date', e.target.value)} />
+                            <Input type="date" value={formData.employee_signature_date || new Date().toISOString().split('T')[0]} readOnly className="bg-muted" />
                         </div>
                     </div>
                 </CardContent>
             </Card>
 
-            <div className="flex justify-end gap-4">
-                <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isLoading}>Save Draft</Button>
-                <Button onClick={() => handleSave('Pending')} disabled={isLoading}>Submit Request</Button>
-            </div>
+            {!isReadOnly && (
+                <div className="flex justify-end gap-4">
+                    <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isLoading}>Save Draft</Button>
+                    <Button onClick={() => handleSave('Pending')} disabled={isLoading}>Submit Request</Button>
+                </div>
+            )}
+
         </div>
     );
 };

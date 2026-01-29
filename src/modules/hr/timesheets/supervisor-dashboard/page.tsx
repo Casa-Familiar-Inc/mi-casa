@@ -6,12 +6,12 @@ import { HR_TimeSheetHeader } from '../../../../types/timesheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from "@/components/ui/table";
 import { Badge } from '@/components/ui/badge';
 import { useGetIdentity, usePermissions } from '@refinedev/core';
@@ -36,71 +36,10 @@ export const SupervisorDashboard: React.FC = () => {
     const processedRef = React.useRef(false);
 
     useEffect(() => {
-        const checkAccess = async () => {
-             // Hard Stop: If already processed this mount, do not run again.
-             if (processedRef.current) return;
-             if (isLoadingPermissions) return;
-
-             // Logic: isSupervisor OR has direct reports
-             // 1. Check permissions (from authProvider)
-             if (permissions?.isSupervisor) {
-                 processedRef.current = true;
-                 loadSubmissions();
-                 return;
-             }
-
-             // 2. Fallback: Check session directReports
-             const { data: session } = await authClient.getSession();
-             let directReports: string[] = (session?.user as any)?.directReports || [];
-             
-             if (typeof directReports === 'string') {
-                 try {
-                     directReports = JSON.parse(directReports);
-                 } catch (e) {
-                     directReports = [];
-                 }
-             }
-
-             if (directReports.length > 0) {
-                 processedRef.current = true;
-                 loadSubmissions();
-                 return;
-             }
-
-             if (directReports.length > 0) {
-                 processedRef.current = true;
-                 loadSubmissions();
-                 return;
-             }
-
-             // 3. Fallback: Check Zustand Store (Cache)
-             // We access the store imperatively here or rely on the hook outside?
-             // Accessing imperatively prevents staleness issues inside async function if using getState(), 
-             // but hook is fine if included in deps. Let's use the hook values.
-             // (Assume hook values are passed or we use getState if outside component, but here we are inside).
-             // Actually, let's just use the store variables which are reactive.
-    
-             // Note: In a real refactor we might remove steps 1 & 2 and rely solely on the store if we trust App.tsx
-             // But for now, using store as the "Cache" fallback.
-             
-             // We need to read from the store state. Since we are in an async function and the hook state might be stale in closure
-             // if we didn't add it to deps... but we can just use the store directly if we import it.
-             // OR, better, let's stick to the pattern:
-             const state = useAuthStore.getState();
-             if (state.isSupervisor || (state.directReports && state.directReports.length > 0)) {
-                 processedRef.current = true;
-                 loadSubmissions();
-                 return;
-             }
-
-             // 4. Unauthorized
-             toast.error("Unauthorized: Supervisor access required.");
-             go({ to: '/', type: 'push' });
-        };
-        
-        checkAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isLoadingPermissions, permissionsStr, go]);
+        if (identity?.id) {
+            loadSubmissions();
+        }
+    }, [identity]);
 
     const loadSubmissions = async () => {
         setIsLoading(true);
@@ -109,7 +48,7 @@ export const SupervisorDashboard: React.FC = () => {
             // Pending = Submitted
             // History = Approved, Rejected
             const allData = await TimeSheetService.getSubmittedTimeSheets(['Submitted', 'Approved', 'Rejected']);
-            
+
             // Filter out my own timesheets (I shouldn't approve my own)
             const filteredData = allData.filter(d => d.user_id !== identity?.id);
 
@@ -150,7 +89,7 @@ export const SupervisorDashboard: React.FC = () => {
             toast.error("Failed to reject");
         }
     };
-    
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'Approved': return 'bg-green-100 text-green-800';
@@ -178,22 +117,22 @@ export const SupervisorDashboard: React.FC = () => {
                         <TableCell className="font-medium">{item.employee_name}</TableCell>
                         <TableCell>{item.period_start} - {item.period_end}</TableCell>
                         <TableCell>
-                             <Badge variant="outline" className={getStatusColor(item.status)}>
+                            <Badge variant="outline" className={getStatusColor(item.status)}>
                                 {item.status}
                             </Badge>
                         </TableCell>
                         <TableCell>{Number(item.total_hours || 0).toFixed(2)}</TableCell>
                         <TableCell>{item.employee_signed_by}</TableCell>
                         <TableCell className="text-right space-x-2">
-                             <Button size="sm" variant="secondary" onClick={() => go({ to: `/timesheets/view/${item.id}` })}>
+                            <Button size="sm" variant="secondary" onClick={() => go({ to: `/timesheets/view/${item.id}` })}>
                                 {isPending ? 'Review' : 'View'}
-                             </Button>
-                             {isPending && (
+                            </Button>
+                            {isPending && (
                                 <>
                                     <Button size="sm" variant="outline" onClick={() => handleRejectClick(item.id)}>Reject</Button>
                                     <Button size="sm" onClick={() => handleApprove(item.id, item.employee_name)}>Approve</Button>
                                 </>
-                             )}
+                            )}
                         </TableCell>
                     </TableRow>
                 ))}
@@ -206,7 +145,7 @@ export const SupervisorDashboard: React.FC = () => {
     return (
         <div className="p-6 space-y-6">
             <h1 className="text-2xl font-bold">Supervisor Dashboard</h1>
-            
+
             <Tabs defaultValue="pending" className="w-full">
                 <TabsList>
                     <TabsTrigger value="pending">Pending Approvals ({pending.length})</TabsTrigger>
@@ -217,7 +156,7 @@ export const SupervisorDashboard: React.FC = () => {
                     <Card>
                         <CardHeader><CardTitle>Pending Reviews</CardTitle></CardHeader>
                         <CardContent>
-                             {pending.length === 0 ? <p className="text-center py-8 text-muted-foreground">No pending items.</p> : renderTable(pending, true)}
+                            {pending.length === 0 ? <p className="text-center py-8 text-muted-foreground">No pending items.</p> : renderTable(pending, true)}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -226,7 +165,7 @@ export const SupervisorDashboard: React.FC = () => {
                     <Card>
                         <CardHeader><CardTitle>Approval History</CardTitle></CardHeader>
                         <CardContent>
-                             {history.length === 0 ? <p className="text-center py-8 text-muted-foreground">No history found.</p> : renderTable(history, false)}
+                            {history.length === 0 ? <p className="text-center py-8 text-muted-foreground">No history found.</p> : renderTable(history, false)}
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -241,8 +180,8 @@ export const SupervisorDashboard: React.FC = () => {
                         </DialogDescription>
                     </DialogHeader>
                     <div>
-                        <Textarea 
-                            placeholder="Reason for rejection..." 
+                        <Textarea
+                            placeholder="Reason for rejection..."
                             value={rejectReason}
                             onChange={(e) => setRejectReason(e.target.value)}
                         />

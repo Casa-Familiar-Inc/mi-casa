@@ -26,12 +26,6 @@ export const TimeOffApprovals = () => {
 
     useEffect(() => {
         if (identity) {
-            const isSup = (identity as any).isSupervisor === true || identity.role === 'admin' || identity.role === 'hr';
-            if (!isSup) {
-                toast.error("You do not have permission to access the approval dashboard.");
-                go({ to: '/hr/time-off' });
-                return;
-            }
             loadData();
         }
     }, [identity]);
