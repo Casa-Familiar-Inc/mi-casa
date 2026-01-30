@@ -40,7 +40,6 @@ import { TimeOffPage } from "./modules/hr/time-off/page";
 import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { UserList } from "./modules/admin/users/list";
-import { UserEdit } from "./modules/admin/users/edit";
 import { HolidayList } from "./modules/hr/holidays/list";
 import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
 import { DepartmentsList } from "./modules/admin/departments";
@@ -290,7 +289,6 @@ function App() {
 
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                   <Route path="/admin/users" element={<UserList />} />
-                  <Route path="/admin/users/edit/:id" element={<UserEdit />} />
                   <Route path="/admin/departments" element={<DepartmentsList />} />
                 </Route>
                 <Route

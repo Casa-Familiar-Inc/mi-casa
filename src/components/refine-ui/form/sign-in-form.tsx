@@ -1,45 +1,18 @@
 "use client";
 
-import { useState } from "react";
-
-import { CircleHelp } from "lucide-react";
-
-import { InputPassword } from "@/components/refine-ui/form/input-password";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useLink, useLogin, useRefineOptions } from "@refinedev/core";
 
 export const SignInForm = () => {
-  const [rememberMe, setRememberMe] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  const Link = useLink();
-
-  const { title } = useRefineOptions();
-
   const { mutate: login } = useLogin();
-
-  const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    login({
-      email,
-      password,
-    });
-  };
 
   const handleSignInWithMicrosoft = () => {
     login({ provider: "microsoft" });

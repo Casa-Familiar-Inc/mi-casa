@@ -1,5 +1,5 @@
 import { AuthProvider } from "@refinedev/core";
-import { adminAuthProvider } from "./authProvider";
+// import { adminAuthProvider } from "./authProvider";
 import { microsoftAuthProvider } from "./authProviderMicrosoft";
 
 /**
@@ -9,35 +9,21 @@ import { microsoftAuthProvider } from "./authProviderMicrosoft";
  */
 export const combinedAuthProvider: AuthProvider = {
     login: async (params) => {
-        if (params?.provider === "microsoft") {
-            return await microsoftAuthProvider.login(params);
-        }
-        return await adminAuthProvider.login(params);
+        return await microsoftAuthProvider.login(params);
     },
     logout: async (params) => {
-        if (params?.provider === "microsoft") {
-            return await microsoftAuthProvider.logout(params);
-        }
-        return await adminAuthProvider.logout(params);
+        return await microsoftAuthProvider.logout(params);
     },
     check: async (params) => {
-        const ms = await microsoftAuthProvider.check(params);
-        if (ms.authenticated) return ms;
-        return await adminAuthProvider.check(params);
+        return await microsoftAuthProvider.check(params);
     },
     getIdentity: async (params) => {
-        const ms = await microsoftAuthProvider.getIdentity?.(params);
-        if (ms) return ms;
-        return await adminAuthProvider.getIdentity?.(params);
+        return await microsoftAuthProvider.getIdentity?.(params);
     },
     getPermissions: async (params) => {
-        const ms = await microsoftAuthProvider.getPermissions?.(params);
-        if (ms) return ms;
-        return await adminAuthProvider.getPermissions?.(params);
+        return await microsoftAuthProvider.getPermissions?.(params);
     },
     onError: async (error) => {
-        await microsoftAuthProvider.onError?.(error);
-        await adminAuthProvider.onError?.(error);
-        return { error };
+        return await microsoftAuthProvider.onError?.(error);
     },
 };
