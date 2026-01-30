@@ -6,7 +6,8 @@ import {
   Users,
   Clock,
   ShieldAlert,
-  Calendar
+  Calendar,
+  Building
 } from "lucide-react";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
@@ -41,6 +42,7 @@ import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboar
 import { UserList } from "./modules/admin/users/list";
 import { HolidayList } from "./modules/hr/holidays/list";
 import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
+import { DepartmentsList } from "./modules/admin/departments";
 
 import { useState, useEffect } from "react";
 import { authClient } from "./lib/auth";
@@ -115,6 +117,14 @@ function App() {
       meta: {
         label: "Employees",
         icon: <Users className="h-4 w-4" />
+      }
+    },
+    {
+      name: "departments",
+      list: "/admin/departments",
+      meta: {
+        label: "Departments",
+        icon: <Building className="h-4 w-4" />
       }
     },
     {
@@ -280,6 +290,7 @@ function App() {
 
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                   <Route path="/admin/users" element={<UserList />} />
+                  <Route path="/admin/departments" element={<DepartmentsList />} />
                 </Route>
                 <Route
                   element={

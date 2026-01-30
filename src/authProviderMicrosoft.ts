@@ -73,6 +73,7 @@ export const microsoftAuthProvider: AuthProvider = {
                 name: session.user.name,
                 email: session.user.email,
                 avatar: session.user.image,
+                departmentId: (session.user as any).departmentId,
             };
         }
         return null;

@@ -73,6 +73,7 @@ export const adminAuthProvider: AuthProvider = {
             name: session.user.name || session.user.email,
             email: session.user.email,
             avatar: session.user.image,
+            departmentId: (session.user as any).departmentId,
         };
     },
     onError: async (error) => {

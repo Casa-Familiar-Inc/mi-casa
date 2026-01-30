@@ -1,6 +1,8 @@
 
 import React from 'react';
 import { useNavigation } from "@refinedev/core";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import {
     Table,
     TableBody,
@@ -73,6 +75,26 @@ export const UserList: React.FC = () => {
     const [role, setRole] = React.useState('user');
     const [screens, setScreens] = React.useState<string[]>([]);
     const [isSaving, setIsSaving] = React.useState(false);
+    const [isSyncing, setIsSyncing] = React.useState(false);
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/sync`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            if (!res.ok) throw new Error("Sync failed");
+            const data = await res.json();
+            toast.success(`Sync Complete: ${data.created} created, ${data.updated} updated.`);
+            fetchUsers();
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to sync users from Entra ID");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const handleEditClick = (user: any) => {
         setEditingUser(user);
@@ -121,7 +143,13 @@ export const UserList: React.FC = () => {
     return (
         <div className="p-6">
             <Card>
-                <CardHeader><CardTitle>User Management</CardTitle></CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>User Management</CardTitle>
+                    <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="sm">
+                        <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                        {isSyncing ? 'Syncing...' : 'Sync from Entra ID'}
+                    </Button>
+                </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader>
@@ -130,6 +158,8 @@ export const UserList: React.FC = () => {
                                 <TableHead>Email</TableHead>
                                 <TableHead>Role</TableHead>
                                 <TableHead>Allowed Screens</TableHead>
+                                <TableHead>Phone</TableHead>
+                                <TableHead>Office</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -146,6 +176,8 @@ export const UserList: React.FC = () => {
                                     <TableCell className="max-w-xs truncate">
                                         {user.allowedScreens ? JSON.parse(user.allowedScreens).join(', ') : '-'}
                                     </TableCell>
+                                    <TableCell>{user.phoneNumber || '-'}</TableCell>
+                                    <TableCell>{user.officeLocation || '-'}</TableCell>
                                     <TableCell className="text-right">
                                         <Dialog open={!!editingUser} onOpenChange={(o) => !o && setEditingUser(null)}>
                                             <DialogTrigger asChild>

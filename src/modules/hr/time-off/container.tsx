@@ -31,7 +31,11 @@ const REQUEST_TYPES = [
 ];
 
 export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId }) => {
-    const { data: identity } = useGetIdentity<{ email: string, name: string }>();
+    const { data: identity } = useGetIdentity<{ 
+        email: string; 
+        name: string; 
+        departmentId?: string; 
+    }>();
     const go = useGo();
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState<Partial<HR_TimeOffRequest>>({
@@ -57,7 +61,28 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         if (requestId) {
             loadRequest(requestId);
         } else if (identity?.name) {
-            setFormData(prev => ({ ...prev, employee_name: identity.name }));
+            // New Request Initialization
+            const init = async () => {
+                let deptName = '';
+                if (identity.departmentId) {
+                    try {
+                        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/organization/departments`, { credentials: 'include' });
+                        if (res.ok) {
+                            const depts = await res.json();
+                            const matches = depts.find((d: any) => d.id === identity.departmentId);
+                            if (matches) deptName = matches.name;
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch department info", e);
+                    }
+                }
+                setFormData(prev => ({ 
+                    ...prev, 
+                    employee_name: identity.name,
+                    department: deptName 
+                }));
+            };
+            init();
         }
     }, [requestId, identity]);
 
@@ -345,15 +370,15 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
-                        <Input value={formData.employee_name} onChange={(e) => handleChange('employee_name', e.target.value)} disabled={isReadOnly} />
+                        <Input value={formData.employee_name} readOnly className="bg-muted" />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
-                        <Input value={formData.department} onChange={(e) => handleChange('department', e.target.value)} disabled={isReadOnly} />
+                        <Input value={formData.department} readOnly className="bg-muted" />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
-                        <Input type="date" value={formData.today_date} onChange={(e) => handleChange('today_date', e.target.value)} disabled={isReadOnly} />
+                        <Input type="date" value={formData.today_date} readOnly className="bg-muted" />
                     </div>
                 </CardContent>
             </Card>
@@ -501,6 +526,35 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                     </div>
                 </CardContent>
             </Card>
+
+            {(formData.status === 'Approved' || formData.status === 'Rejected') && (
+                <Card>
+                    <CardHeader className="bg-black text-white py-2">
+                        <CardTitle className="text-center uppercase text-sm">Supervisor Approval</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                        <div className="flex justify-center pb-2">
+                            <div className={`px-4 py-1.5 rounded-full font-bold uppercase text-xs tracking-wide border ${
+                                formData.status === 'Approved'
+                                    ? 'bg-green-100 text-green-800 border-green-200'
+                                    : 'bg-red-100 text-red-800 border-red-200'
+                            }`}>
+                                Status: {formData.status}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label>Supervisor Signature:</Label>
+                                <Input value={formData.supervisor_approval_by || ''} readOnly className="bg-muted" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Date:</Label>
+                                <Input type="date" value={formData.supervisor_approval_date || ''} readOnly className="bg-muted" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             {!isReadOnly && (
                 <div className="flex justify-end gap-4">
