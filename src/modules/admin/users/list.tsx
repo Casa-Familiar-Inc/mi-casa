@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { useNavigation } from "@refinedev/core";
+import { useGo } from "@refinedev/core";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -24,6 +25,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 // Define Screens we can assign
 // Define Screens we can assign (Fallback/Initial)
+// Define Screens we can assign (Fallback/Initial)
 const AVAILABLE_SCREENS = [
     { id: 'loans', label: 'Loans' },
     { id: 'TimeSheets', label: 'TimeSheets' },
@@ -33,10 +35,80 @@ const AVAILABLE_SCREENS = [
     { id: 'it-category', label: 'IT Settings' }
 ];
 
+import { EmployeesService } from '../../../services/employeesService';
+import { OrganizationService } from '../../../services/organizationService';
+
+const InviteUserForm = ({ onSuccess }: { onSuccess: () => void }) => {
+    const [email, setEmail] = React.useState('');
+    const [role, setRole] = React.useState('user');
+    const [departmentId, setDepartmentId] = React.useState('');
+    const [departments, setDepartments] = React.useState<any[]>([]);
+    const [isLoading, setIsLoading] = React.useState(false);
+
+    React.useEffect(() => {
+        OrganizationService.getAllDepartments().then(setDepartments);
+    }, []);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsLoading(true);
+        try {
+            const res = await EmployeesService.inviteUser({ email, role, departmentId });
+            toast.success("Invitation sent!", {
+                description: res.previewUrl ? <a href={res.previewUrl} target="_blank" className="underline">Click here for preview (Dev Only)</a> : undefined,
+                duration: 10000
+            });
+            onSuccess();
+        } catch (error: any) {
+            toast.error(error.message);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+            <div className="space-y-2">
+                <Label>Email Address</Label>
+                <Input type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="employee@company.com" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Role</Label>
+                    <Select value={role} onValueChange={setRole}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="hr">Supervisor</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Department</Label>
+                    <Select value={departmentId} onValueChange={setDepartmentId}>
+                        <SelectTrigger><SelectValue placeholder="Select dept" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {departments.map((d: any) => (
+                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <Button type="submit" disabled={isLoading} className="w-full">
+                {isLoading ? 'Sending Invite...' : 'Send Invitation'}
+            </Button>
+        </form>
+    );
+};
+
 export const UserList: React.FC = () => {
     const [users, setUsers] = React.useState<any[]>([]);
     const [availableScreens, setAvailableScreens] = React.useState<{id: string, label: string}[]>(AVAILABLE_SCREENS);
     const [isLoading, setIsLoading] = React.useState(true);
+    const go = useGo();
 
     const fetchUsers = async () => {
         setIsLoading(true);
@@ -145,10 +217,19 @@ export const UserList: React.FC = () => {
             <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>User Management</CardTitle>
-                    <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="sm">
-                        <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing...' : 'Sync from Entra ID'}
-                    </Button>
+                    <CardTitle>User Management</CardTitle>
+                    <Dialog>
+                        <DialogTrigger asChild>
+                            <Button>Invite User</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Invite New User</DialogTitle>
+                                <DialogDescription>Send an invitation email to a new employee.</DialogDescription>
+                            </DialogHeader>
+                            <InviteUserForm onSuccess={fetchUsers} />
+                        </DialogContent>
+                    </Dialog>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -179,60 +260,11 @@ export const UserList: React.FC = () => {
                                     <TableCell>{user.phoneNumber || '-'}</TableCell>
                                     <TableCell>{user.officeLocation || '-'}</TableCell>
                                     <TableCell className="text-right">
-                                        <Dialog open={!!editingUser} onOpenChange={(o) => !o && setEditingUser(null)}>
-                                            <DialogTrigger asChild>
-                                                <Button size="sm" variant="outline" onClick={() => handleEditClick(user)}>Edit Permissions</Button>
-                                            </DialogTrigger>
-                                            {editingUser?.id === user.id && (
-                                                <DialogContent className="sm:max-w-[425px]">
-                                                    <DialogHeader>
-                                                        <DialogTitle>Edit User: {editingUser.name}</DialogTitle>
-                                                        <DialogDescription>Change role and screen access.</DialogDescription>
-                                                    </DialogHeader>
-                                                    
-                                                    <div className="grid gap-4 py-4">
-                                                        <div className="grid grid-cols-4 items-center gap-4">
-                                                            <Label className="text-right">Role</Label>
-                                                            <Select value={role} onValueChange={setRole}>
-                                                                <SelectTrigger className="col-span-3">
-                                                                    <SelectValue placeholder="Select role" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem value="user">User (Employee)</SelectItem>
-                                                                    <SelectItem value="hr">Supervisor</SelectItem>
-                                                                    <SelectItem value="admin">Admin</SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-
-                                                        <div className="space-y-4">
-                                                            <Label>Allowed Screens</Label>
-                                                            <div className="border rounded p-4 space-y-2">
-                                                                {availableScreens.map(sc => (
-                                                                    <div key={sc.id} className="flex items-center space-x-2">
-                                                                        <Checkbox 
-                                                                            id={`screen-${sc.id}`} 
-                                                                            checked={screens.includes(sc.id)}
-                                                                            onCheckedChange={(c) => toggleScreen(sc.id, !!c)}
-                                                                        />
-                                                                        <label htmlFor={`screen-${sc.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                                                            {sc.label}
-                                                                        </label>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    <DialogFooter>
-                                                        <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-                                                        <Button onClick={handleSave} disabled={isSaving}>
-                                                            {isSaving ? 'Saving...' : 'Save Changes'}
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </DialogContent>
-                                            )}
-                                        </Dialog>
+                                        <div className="flex justify-end gap-2">
+                                            <Button size="sm" variant="outline" onClick={() => go({ to: `/admin/users/edit/${user.id}` })}>
+                                                Edit Profile
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             ))}
