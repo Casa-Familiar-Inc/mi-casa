@@ -1,14 +1,13 @@
-import { AbilityBuilder, CreateAbility, createMongoAbility, MongoAbility } from "@casl/ability";
+import { AbilityBuilder, CreateAbility, createMongoAbility, MongoAbility, createAliasResolver } from "@casl/ability";
 
 export type Subjects =
     | "User"
-    | "TimeSheet"
+    | "TimeSheets"
     | "TimeOff"
-    | "Loan"
-    | "Employee"
+    | "employees"
     | "Supervisor"
-    | "IT"
-    | "HR"
+    | "TimeOffApprovals"
+    | "it-category"
     | "CompanyCalendar"
     | "all";
 
@@ -22,6 +21,17 @@ export type Actions = "manage" | "create" | "read" | "update" | "delete" | "list
 export type AppAbility = MongoAbility;
 export const createAppAbility = createMongoAbility as CreateAbility<AppAbility>;
 
+// Helper to detect subject type (crucial for Refine objects vs strings)
+export const detectSubjectType = (subject: any) => {
+    if (typeof subject === "string") return subject;
+    if (subject && typeof subject === "object") {
+        if (subject.resource) return subject.resource; // Refine passes resource objects
+        if (subject.name) return subject.name;         // Menu items
+        if (subject.__type) return subject.__type;     // Custom tagging
+    }
+    return "all";
+};
+
 export interface UserPayload {
     id: string;
     role?: string | null;
@@ -31,83 +41,64 @@ export interface UserPayload {
 }
 
 export function defineAbilityFor(user: UserPayload) {
-    // console.log("Defining Ability for:", user); // DEBUG
+    console.log("[Ability] Defining for user:", user.id, "Role:", user.role, "Screens:", user.allowedScreens);
+    const resolveAction = createAliasResolver({
+        list: 'read',
+        show: 'read',
+        edit: 'update'
+    });
+
     const { can, cannot, build } = new AbilityBuilder<AppAbility>(createMongoAbility);
 
+    // Configure ability with custom subject detection
+    const abilityOptions = {
+        detectSubjectType,
+        resolveAction
+    };
     const role = user.role || 'user';
     const screens = user.allowedScreens || [];
+
+    // --- GRANULAR PERMISSIONS PARSING ---
+    screens.forEach(screenPerm => {
+        if (screenPerm.includes(':')) {
+            const [subject, action] = screenPerm.split(':').map(s => s.trim());
+            // @ts-ignore
+            can(action, subject);
+        } else {
+            // Legacy / Full access for that specific screen
+            // @ts-ignore
+            can("manage", screenPerm.trim());
+        }
+    });
 
     // --- ADMIN ---
     if (role === 'admin') {
         can("manage", "all");
-        return build();
+        return build(abilityOptions);
     }
 
     // --- DASHBOARD ---
-    // Refine uses 'list' for menu visibility
-    can("list", "dashboard");
-    can("show", "dashboard");
+    can("read", "dashboard");
 
     // --- SCREENS MAPPING ---
-    // Refine Resource Name vs Subject. 
-    // Resource: "TimeSheets", Subject: "TimeSheet"
-    // Resource: "TimeSheets", Subject: "TimeSheets" (if strict mapping)
-    // Let's use string matching for simplicity or map them.
-    // In App.tsx we used resource names directly.
-    // Let's align subjects with Resource Names for Frontend convenience.
+    // The granular parser already handles 'read', 'create', 'update', 'delete' 
+    // for all subjects in 'screens'. 
 
-    // Resource: "TimeSheets"
-    if (screens.includes("TimeSheets")) {
-        can("list", "TimeSheets");
-        can("create", "TimeSheets");
-        can("show", "TimeSheets");
-        can("edit", "TimeSheets");
-    }
+    // Additional ABAC rules (Logic checks beyond simple resource access)
+    // We only call cannot/can with conditions here.
 
-    if (screens.includes("TimeOff")) {
-        can("list", "TimeOff");
-        can("create", "TimeOff");
-        can("show", "TimeOff");
-    }
+    // TimeSheets: Ownership update
+    can("update", "TimeSheets", { userId: user.id });
 
-    if (screens.includes("loans")) { // Lowercase in list.tsx, handle both case logic?
-        can("list", "loans");
-        can("show", "loans");
-    }
+    // TimeOff: Ownership rules
+    can(["update", "delete", "read"], "TimeOff", { userId: user.id });
 
-    if (screens.includes("Supervisor")) {
-        can("list", "Supervisor");
-        can("show", "Supervisor");
-        can("manage", "Supervisor");
-    }
-
-    if (screens.includes("TimeOffApprovals")) {
-        can("list", "TimeOffApprovals");
-        can("show", "TimeOffApprovals");
-        can("manage", "TimeOffApprovals");
-    }
-
-    if (screens.includes("employees")) {
-        can("manage", "employees"); // Manage user list
-    }
-
-    if (screens.includes("it-category")) {
-        can("manage", "it-category");
-    }
-
-    if (screens.includes("CompanyCalendar")) {
-        can("list", "CompanyCalendar");
-        can("show", "CompanyCalendar");
-        can("manage", "CompanyCalendar");
-    }
-
-
-    // HR Role Specials
+    // HR Role Specials (Global overrides)
     if (role === 'hr') {
         can("manage", "TimeOff");
-        can("list", "TimeSheets"); // HR Audit
-        can("list", "employees");
+        can("read", "TimeSheets");
+        can("read", "employees");
     }
 
-    return build();
+    return build(abilityOptions);
 }

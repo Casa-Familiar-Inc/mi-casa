@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useGetIdentity, useGo } from '@refinedev/core';
+import { useGetIdentity, useGo, CanAccess } from '@refinedev/core';
 import { TimeSheetService } from '../../../../services/timeSheetService';
 import { HR_TimeSheetHeader } from '../../../../types/timesheet';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -143,56 +143,62 @@ export const TimeSheetList = () => {
     );
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">My Timesheets</h1>
-                <Button onClick={() => setIsCreateOpen(true)}>
-                    Create Timesheet
-                </Button>
+        <CanAccess 
+            resource="TimeSheets" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para ver tus timesheets.</div>}
+        >
+            <div className="p-6 space-y-6">
+                <div className="flex justify-between items-center">
+                    <h1 className="text-2xl font-bold">My Timesheets</h1>
+                    <Button onClick={() => setIsCreateOpen(true)}>
+                        Create Timesheet
+                    </Button>
+                </div>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>History</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? <div>Loading...</div> : (
+                            headers.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 space-y-4 border border-dashed rounded-lg">
+                                    <p className="text-muted-foreground text-lg">You haven't created any timesheets yet.</p>
+                                    <Button onClick={() => setIsCreateOpen(true)}>
+                                        Create Timesheet
+                                    </Button>
+                                </div>
+                            ) : renderTable(headers)
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Create Timesheet</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <label className="text-sm font-medium mb-2 block">Select Period</label>
+                            <Select value={selectedPeriodKey} onValueChange={setSelectedPeriodKey}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a period" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {periods.map(p => (
+                                        <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+                            <Button onClick={handleCreate} disabled={!selectedPeriodKey}>Open Timesheet</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </div>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>History</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? <div>Loading...</div> : (
-                        headers.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 space-y-4 border border-dashed rounded-lg">
-                                <p className="text-muted-foreground text-lg">You haven't created any timesheets yet.</p>
-                                <Button onClick={() => setIsCreateOpen(true)}>
-                                    Create Timesheet
-                                </Button>
-                            </div>
-                        ) : renderTable(headers)
-                    )}
-                </CardContent>
-            </Card>
-
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Create Timesheet</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <label className="text-sm font-medium mb-2 block">Select Period</label>
-                        <Select value={selectedPeriodKey} onValueChange={setSelectedPeriodKey}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select a period" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {periods.map(p => (
-                                    <SelectItem key={p.key} value={p.key}>{p.label}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                        <Button onClick={handleCreate} disabled={!selectedPeriodKey}>Open Timesheet</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </div>
+        </CanAccess>
     );
 };

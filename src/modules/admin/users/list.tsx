@@ -25,7 +25,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 // Define Screens we can assign
 // Define Screens we can assign (Fallback/Initial)
 const AVAILABLE_SCREENS = [
-    { id: 'loans', label: 'Loans' },
     { id: 'TimeSheets', label: 'TimeSheets' },
     { id: 'TimeOff', label: 'Time Off' },
     { id: 'Supervisor', label: 'Supervisor Dashboard' },
@@ -36,6 +35,7 @@ const AVAILABLE_SCREENS = [
 export const UserList: React.FC = () => {
     const { mutate: logout } = useLogout();
     const [users, setUsers] = React.useState<any[]>([]);
+    const [departments, setDepartments] = React.useState<any[]>([]);
     const [availableScreens, setAvailableScreens] = React.useState<{id: string, label: string}[]>(AVAILABLE_SCREENS);
     const [isLoading, setIsLoading] = React.useState(true);
 
@@ -52,6 +52,15 @@ export const UserList: React.FC = () => {
                 console.error("Failed to fetch users", res.status);
             }
             
+            // Fetch Departments
+            const resDepts = await fetch(`${import.meta.env.VITE_API_URL}/api/organization/departments`, {
+                 credentials: 'include'
+            });
+             if (resDepts.ok) {
+                 const data = await resDepts.json();
+                 setDepartments(data);
+             }
+
             // Fetch Screens
             const resScreens = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/screens`, {
                  credentials: 'include'
@@ -74,7 +83,9 @@ export const UserList: React.FC = () => {
 
     const [editingUser, setEditingUser] = React.useState<any>(null);
     const [role, setRole] = React.useState('user');
+    const [departmentId, setDepartmentId] = React.useState<string>("");
     const [screens, setScreens] = React.useState<string[]>([]);
+    const [employeeSettings, setEmployeeSettings] = React.useState<any>({});
     const [isSaving, setIsSaving] = React.useState(false);
     const [isSyncing, setIsSyncing] = React.useState(false);
 
@@ -105,29 +116,55 @@ export const UserList: React.FC = () => {
         }
     };
 
-    const handleEditClick = (user: any) => {
+    const handleEditClick = async (user: any) => {
         setEditingUser(user);
         setRole(user.role || 'user');
+        setDepartmentId(user.departmentId || "");
         try {
             setScreens(user.allowedScreens ? JSON.parse(user.allowedScreens) : []);
         } catch(e) { setScreens([]); }
+
+        // Fetch Employee Settings
+        try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/settings/${user.id}`, { credentials: 'include' });
+            if (res.ok) {
+                const settings = await res.json();
+                setEmployeeSettings(settings);
+            } else {
+                setEmployeeSettings({});
+            }
+        } catch (e) {
+            console.error(e);
+            setEmployeeSettings({});
+        }
     };
 
     const handleSave = async () => {
         if (!editingUser) return;
         setIsSaving(true);
         try {
+            // Update User Info (Role, Screens, Department)
             await fetch(`${import.meta.env.VITE_API_URL}/api/employees/${editingUser.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ role, allowedScreens: screens }),
+                body: JSON.stringify({ role, allowedScreens: screens, departmentId }), // Note: Backend update might need to support departmentId
                 credentials: 'include'
             });
+
+            // Update Employee Settings
+            await fetch(`${import.meta.env.VITE_API_URL}/api/employees/settings/${editingUser.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(employeeSettings),
+                credentials: 'include'
+            });
+
             setEditingUser(null);
             fetchUsers();
+            toast.success("User updated successfully");
         } catch (e) {
             console.error(e);
-            alert("Failed to save");
+            toast.error("Failed to save changes");
         } finally {
             setIsSaving(false);
         }
@@ -214,21 +251,89 @@ export const UserList: React.FC = () => {
                                                             </Select>
                                                         </div>
 
+                                                        <div className="grid grid-cols-4 items-center gap-4">
+                                                            <Label className="text-right">Department</Label>
+                                                            <Select value={departmentId} onValueChange={setDepartmentId}>
+                                                                <SelectTrigger className="col-span-3">
+                                                                    <SelectValue placeholder="Select Department" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="none">_No Department_</SelectItem>
+                                                                    {departments.map((d) => (
+                                                                        <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+
                                                         <div className="space-y-4">
-                                                            <Label>Allowed Screens</Label>
-                                                            <div className="border rounded p-4 space-y-2">
-                                                                {availableScreens.map(sc => (
-                                                                    <div key={sc.id} className="flex items-center space-x-2">
-                                                                        <Checkbox 
-                                                                            id={`screen-${sc.id}`} 
-                                                                            checked={screens.includes(sc.id)}
-                                                                            onCheckedChange={(c) => toggleScreen(sc.id, !!c)}
-                                                                        />
-                                                                        <label htmlFor={`screen-${sc.id}`} className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                                                            {sc.label}
-                                                                        </label>
-                                                                    </div>
-                                                                ))}
+                                                            <div className="flex items-center justify-between">
+                                                                <Label>Permissions (Resource:Action)</Label>
+                                                                <Badge variant="outline" className="text-[10px]">Matrix Mode</Badge>
+                                                            </div>
+                                                            <div className="border rounded-md overflow-hidden">
+                                                                <Table>
+                                                                    <TableHeader className="bg-muted/50">
+                                                                        <TableRow className="hover:bg-transparent">
+                                                                            <TableHead className="w-[150px] py-2 text-xs">Module</TableHead>
+                                                                            <TableHead className="text-center py-2 text-xs">Read</TableHead>
+                                                                            <TableHead className="text-center py-2 text-xs">Write</TableHead>
+                                                                            <TableHead className="text-center py-2 text-xs">Del</TableHead>
+                                                                            <TableHead className="text-center py-2 text-xs">Full</TableHead>
+                                                                        </TableRow>
+                                                                    </TableHeader>
+                                                                    <TableBody>
+                                                                        {availableScreens.map(sc => {
+                                                                            const hasRead = screens.includes(`${sc.id}:read`) || screens.includes(sc.id);
+                                                                            const hasCreate = screens.includes(`${sc.id}:create`) || screens.includes(sc.id);
+                                                                            const hasUpdate = screens.includes(`${sc.id}:update`) || screens.includes(sc.id);
+                                                                            const hasDelete = screens.includes(`${sc.id}:delete`) || screens.includes(sc.id);
+                                                                            const hasManage = screens.includes(sc.id) || screens.includes(`${sc.id}:manage`);
+
+                                                                            const toggle = (action: string, checked: boolean) => {
+                                                                                const perm = action === 'manage' ? sc.id : `${sc.id}:${action}`;
+                                                                                setScreens(prev => 
+                                                                                    checked 
+                                                                                    ? [...new Set([...prev, perm])] 
+                                                                                    : prev.filter(p => p !== perm && p !== sc.id) // Unchecking granular removes global too
+                                                                                );
+                                                                            };
+
+                                                                            return (
+                                                                                <TableRow key={sc.id} className="h-10">
+                                                                                    <TableCell className="font-medium text-xs py-1">{sc.label}</TableCell>
+                                                                                    <TableCell className="text-center py-1">
+                                                                                        <Checkbox 
+                                                                                            checked={hasRead} 
+                                                                                            onCheckedChange={(c) => toggle('read', !!c)}
+                                                                                        />
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-center py-1">
+                                                                                        <Checkbox 
+                                                                                            checked={hasUpdate || hasCreate} 
+                                                                                            onCheckedChange={(c) => {
+                                                                                                toggle('update', !!c);
+                                                                                                toggle('create', !!c);
+                                                                                            }}
+                                                                                        />
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-center py-1">
+                                                                                        <Checkbox 
+                                                                                            checked={hasDelete} 
+                                                                                            onCheckedChange={(c) => toggle('delete', !!c)}
+                                                                                        />
+                                                                                    </TableCell>
+                                                                                    <TableCell className="text-center py-1">
+                                                                                        <Checkbox 
+                                                                                            checked={hasManage} 
+                                                                                            onCheckedChange={(c) => toggle('manage', !!c)}
+                                                                                        />
+                                                                                    </TableCell>
+                                                                                </TableRow>
+                                                                            );
+                                                                        })}
+                                                                    </TableBody>
+                                                                </Table>
                                                             </div>
                                                         </div>
                                                     </div>

@@ -45,31 +45,124 @@ import {
 import { ChevronRight, ListIcon, LogOutIcon, ChevronsUpDown, Sparkles, User, Settings } from "lucide-react";
 import React from "react";
 import { UserAvatar } from "@/components/refine-ui/layout/user-avatar";
+import { useAuthStore } from "@/stores/authStore";
 
+
+// --- CONFIGURATION ---
+
+const GROUP_CONFIG = [
+    {
+        label: "Operations",
+        resources: ["TimeSheets"],
+    },
+    {
+        label: "Human Resources",
+        resources: ["TimeOff", "TimeOffApprovals", "CompanyCalendar"],
+    },
+    {
+         label: "Supervisor",
+         resources: ["Supervisor"],
+    },
+    {
+        label: "Administration",
+        resources: ["employees", "departments"],
+    }
+];
 
 export function Sidebar() {
-  const { open } = useShadcnSidebar();
   const { menuItems, selectedKey } = useMenu();
+  const { allowedScreens, userRole } = useAuthStore();
+
+  // --- RECURSIVE FLATTENING ---
+  const flattenMenuItems = (items: TreeMenuItem[]): TreeMenuItem[] => {
+    return items.reduce((acc: TreeMenuItem[], item) => {
+        acc.push(item);
+        if (item.children) {
+            acc.push(...flattenMenuItems(item.children));
+        }
+        return acc;
+    }, []);
+  };
+
+  const flatItems = flattenMenuItems(menuItems);
+
+  // Helper to check if a resource is even "vaguely" permitted for this user
+  // This is synchronous and mirrors the CASL logic for Sidebar headers
+  const isResourceAuthorized = (resourceName: string) => {
+      if (userRole === 'admin') return true;
+      if (userRole === 'hr' && ["TimeOff", "TimeSheets", "employees"].includes(resourceName)) return true;
+      if (resourceName === 'dashboard') return true;
+      
+      // Check granular matrix
+      return allowedScreens.some(s => s === resourceName || s.startsWith(`${resourceName}:`));
+  };
+
+  // Helper to get items for our custom sections
+  const getItemsForGroup = (resourceNames: string[]) => {
+      return flatItems.filter(item => {
+          const isMatched = resourceNames.includes(item.name);
+          return isMatched && isResourceAuthorized(item.name);
+      });
+  };
 
   return (
     <ShadcnSidebar collapsible="icon" className={cn("border-r")}>
       <SidebarHeader />
       
-      <ShadcnSidebarContent>
-            {/* Main Menu Items */}
-            <SidebarGroup>
-                <SidebarGroupLabel>Platform</SidebarGroupLabel>
-                <SidebarGroupContent>
-                    <SidebarMenu>
-                        {menuItems.map((item: TreeMenuItem) => (
-                             <SidebarItem 
-                                key={item.key || item.name} 
-                                item={item} 
-                                selectedKey={selectedKey} 
-                             />
-                        ))}
-                    </SidebarMenu>
-                </SidebarGroupContent>
+      <ShadcnSidebarContent className="py-2">
+            {GROUP_CONFIG.map(group => {
+                const groupedItems = getItemsForGroup(group.resources);
+                
+                // Only show group if it has items the user is authorized to see at all
+                if (groupedItems.length === 0) return null;
+
+                return (
+                    <SidebarGroup key={group.label} className="py-0">
+                        <SidebarGroupLabel className="text-[10px] uppercase tracking-wider font-bold py-2">{group.label}</SidebarGroupLabel>
+                        <SidebarGroupContent>
+                            <SidebarMenu>
+                                {groupedItems.map((item: TreeMenuItem) => (
+                                     <SidebarItem 
+                                        key={item.key || item.name} 
+                                        item={item} 
+                                        selectedKey={selectedKey} 
+                                     />
+                                ))}
+                            </SidebarMenu>
+                        </SidebarGroupContent>
+                    </SidebarGroup>
+                );
+            })}
+
+            {/* Dashboards / General items */}
+            <SidebarGroup className="py-0">
+                {(() => {
+                    const groupedResourceNames = GROUP_CONFIG.flatMap(g => g.resources);
+                    const otherItems = menuItems.filter(item => 
+                        !groupedResourceNames.includes(item.name) && 
+                        !item.children?.length &&
+                        isResourceAuthorized(item.name || 'dashboard')
+                    );
+                    
+                    if (otherItems.length === 0) return null;
+
+                    return (
+                        <>
+                            <SidebarGroupLabel className="text-[10px] uppercase tracking-wider font-bold py-2">General</SidebarGroupLabel>
+                            <SidebarGroupContent>
+                                <SidebarMenu>
+                                    {otherItems.map((item: TreeMenuItem) => (
+                                        <SidebarItem 
+                                            key={item.key || item.name} 
+                                            item={item} 
+                                            selectedKey={selectedKey} 
+                                        />
+                                    ))}
+                                </SidebarMenu>
+                            </SidebarGroupContent>
+                        </>
+                    );
+                })()}
             </SidebarGroup>
       </ShadcnSidebarContent>
 
@@ -89,57 +182,7 @@ type MenuItemProps = {
 function SidebarItem({ item, selectedKey }: MenuItemProps) {
     const isSelected = item.key === selectedKey;
     const Link = useLink();
-    const { open } = useShadcnSidebar();
 
-    // If item has children -> Collapsible Menu
-    if(item.children && item.children.length > 0) {
-        // Check if any child is selected to auto-expand
-        const isChildSelected = item.children.some(c => c.key === selectedKey);
-        
-        return (
-            <Collapsible asChild defaultOpen={isSelected || isChildSelected} className="group/collapsible">
-                <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                        <SidebarMenuButton tooltip={item.label ?? item.name} isActive={isSelected}>
-                            <ItemIcon icon={item.icon ?? item.meta?.icon} isSelected={isSelected} />
-                            <span>{item.label ?? item.name}</span>
-                            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                        </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <SidebarMenuSub>
-                            {item.children.map(child => (
-                                <SidebarMenuSubItem key={child.key}>
-                                    <SidebarMenuSubButton asChild isActive={child.key === selectedKey}>
-                                        <Link to={child.route || ''}>
-                                            <span>{child.label ?? child.name}</span>
-                                        </Link>
-                                    </SidebarMenuSubButton>
-                                </SidebarMenuSubItem>
-                            ))}
-                        </SidebarMenuSub>
-                    </CollapsibleContent>
-                </SidebarMenuItem>
-            </Collapsible>
-        );
-    }
-
-    // --- MANUAL ACCESS CONTROL CHECK ---
-    const { data: canAccess } = useCan({
-        resource: item.name,
-        action: "list",
-        queryOptions: {
-            enabled: !!item.name, // Only check if name exists
-        }
-    });
-
-    // If Access Control says NO, hide this item.
-    // Note: useMenu() *should* do this, but if it fails, this is our safety net.
-    if (canAccess?.can === false) {
-        return null; 
-    }
-
-    // Standard Link Item
     return (
         <SidebarMenuItem>
             <SidebarMenuButton 
@@ -147,6 +190,7 @@ function SidebarItem({ item, selectedKey }: MenuItemProps) {
                 isActive={isSelected} 
                 tooltip={item.label ?? item.name}
                 className={cn(
+                    "h-9",
                     isSelected ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90" : ""
                 )}
             >
@@ -198,7 +242,6 @@ function SidebarFooter() {
     const { data: identity } = useGetIdentity<{ name: string; email: string; avatar?: string }>();
     const { isMobile } = useShadcnSidebar();
     
-    // Fallback if identity not loaded yet
     const name = identity?.name || 'User';
     const email = identity?.email || '';
     

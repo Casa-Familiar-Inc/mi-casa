@@ -44,7 +44,7 @@ import { HolidayList } from "./modules/hr/holidays/list";
 import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
 import { DepartmentsList } from "./modules/admin/departments";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { authClient } from "./lib/auth";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 import { useAuthStore } from "./stores/authStore";
@@ -58,12 +58,14 @@ axiosInstance.defaults.withCredentials = true;
 
 function App() {
   // const [isSupervisor, setIsSupervisor] = useState(false); // Replaced by Zustand
-  const { isSupervisor, setAuthData, clearAuthData } = useAuthStore();
+  const { isSupervisor, setAuthData, clearAuthData, allowedScreens, userRole, directReports, userId } = useAuthStore();
   const { data: session } = authClient.useSession();
 
   useEffect(() => {
     if (session?.user) {
       const user = session.user as any;
+      console.log("[App] Session User Object:", user);
+      
       let hasReports = false;
       let reports = user.directReports;
 
@@ -82,18 +84,31 @@ function App() {
       const isSup = !!user.isSupervisor || hasReports;
       const role = user.role || 'user';
 
+      // Robust screens extraction (handling both snake_case and camelCase)
+      const rawScreens = user.allowedScreens || user.allowed_screens;
       let screens: string[] = [];
-      try {
-        if (user.allowedScreens) {
-          screens = JSON.parse(user.allowedScreens);
+
+      if (rawScreens) {
+        if (Array.isArray(rawScreens)) {
+          screens = rawScreens;
+        } else if (typeof rawScreens === 'string') {
+          try {
+            screens = JSON.parse(rawScreens);
+          } catch (e) {
+            console.error("[App] Failed to parse screens string:", e);
+            screens = [];
+          }
         }
-      } catch (e) { /* ignore */ }
+      }
+
+      console.log("[App] Parsed Screens:", screens);
 
       // Update Store (Auto-persists)
       setAuthData({
         isSupervisor: isSup,
         directReports: reports,
         userRole: role,
+        userId: user.id || null, 
         allowedScreens: screens
       });
 
@@ -126,14 +141,6 @@ function App() {
         label: "Departments",
         icon: <Building className="h-4 w-4" />
       }
-    },
-    {
-      name: "loans",
-      list: "/loans",
-      meta: {
-        label: "Loans",
-        icon: <Tags className="h-4 w-4" />
-      },
     },
     {
       name: "HR",
@@ -191,11 +198,17 @@ function App() {
     }
   ];
 
-  // Access Control Logic
-  // Admin: Can do everything.
-  // Others: Can only see "allowedScreens" OR "Supervisor" if they are one.
-  // Others: Can only see "allowedScreens" OR "Supervisor" if they are one.
-  const { allowedScreens, userRole, directReports } = useAuthStore();
+ 
+  // Memoize the ability for performance (Best Practice)
+  const ability = useMemo(() => {
+    return defineAbilityFor({
+      id: userId || 'unknown',
+      role: userRole || 'user',
+      isSupervisor: isSupervisor,
+      allowedScreens: allowedScreens,
+      directReports: directReports
+    });
+  }, [userId, userRole, isSupervisor, allowedScreens, directReports]);
 
   return (
     <BrowserRouter>
@@ -209,40 +222,35 @@ function App() {
               routerProvider={routerProvider}
               resources={resources}
               accessControlProvider={{
-                can: async ({ resource, action }) => {
-                  const role = userRole || 'user';
-
-                  // Create the ability based on current store state
-                  // Ideally we memoize this, but for now this is fine given its cheap
-                  const ability = defineAbilityFor({
-                    id: 'current',
-                    role: role,
-                    isSupervisor: isSupervisor,
-                    allowedScreens: allowedScreens,
-                    directReports: directReports
-                  });
-
-                  // Map Refine actions to CASL actions if strictly needed, 
-                  // but we defined 'list', 'show', etc in factory directly.
-                  // Actions: list, show, edit, create, delete
-
-                  // Default to 'list' if action undefined (e.g. menu)
+                can: async ({ resource, action, params }) => {
                   const act = action || 'list';
+                  
+                  // For menu and basic list checks, use the resource string directly.
+                  // Only use the object (params.resource) if we are doing instance-level ABAC.
+                  const subject = (act === 'read' || act === 'list' || !params?.resource) 
+                    ? (resource || 'all') 
+                    : params.resource;
 
-                  const can = ability.can(act, resource || 'all');
-
-                  // Debug logging
-                  if (resource !== 'dashboard') {
-                    console.groupCollapsed(`[AccessControl] Checking ${act} on ${resource}`);
-                    console.log('User Role:', role);
-                    console.log('Allowed Screens:', allowedScreens);
-                    console.log('Result:', can);
-                    console.log('Ability Rules:', ability.rules);
-                    console.groupEnd();
+                  const can = ability.can(act, subject);
+                  
+                  // Debug logging to help identify why access is denied
+                  console.log(`[ACL] Check: action="${act}", resource="${resource}", result=${can}`);
+                  
+                  if (!can) {
+                    console.warn(`[ACL] DENIED: action="${act}", resource="${resource}"`);
                   }
 
-                  return { can };
-                }
+                  return { 
+                    can,
+                    reason: !can ? "No tienes permisos para realizar esta acción" : undefined 
+                  };
+                },
+                options: {
+                  buttons: {
+                    enableAccessControl: true,
+                    hideIfUnauthorized: true,
+                  },
+                },
               }}
               options={{
                 syncWithLocation: true,

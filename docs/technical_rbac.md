@@ -1,93 +1,81 @@
-# Role-Based Access Control (RBAC) Technical Specification
+# Access Control Specification (RBAC & ABAC)
 
 ## Overview
-This document outlines the Upgrade Role-Based Access Control (RBAC) architecture implemented in the Casa Familiar application. The security model is implemented in three layers:
-1.  **Backend (Data Enforcement)**: Strict data filtering based on roles.
-2.  **Frontend (Presentation)**: UI adaptation using `AccessControlProvider`.
-3.  **Granular Permissions**: Specific screen-level access via `allowed_screens`.
+Casa Familiar implements a **Hybrid Access Control** model combining **Role-Based Access Control (RBAC)** and **Attribute-Based Access Control (ABAC)**. 
+
+The system leverages **CASL** (Control Access Security Library) to enforce permissions consistently across the stack:
+1.  **Backend (Hono)**: Hard enforcement using `ability.factory.ts`.
+2.  **Frontend (Refine)**: UI adaptation via `accessControlProvider`.
 
 ## Roles & Definitions
 
-| Role | Key | Description |
-| :--- | :--- | :--- |
-| **Admin** | `admin` | Full access to all modules, settings, and User Management. |
-| **HR Manager** | `hr`, `hr_manager` | Access to all employee data, timesheets, and HR modules. |
-| **Supervisor** | `isSupervisor: true` | Access to own data + strict read/write access to **Direct Reports**. |
-| **Employee** | `user` | Access limited to own data + assigned screens. |
+| Role | Key | Priority | Description |
+| :--- | :--- | :--- | :--- |
+| **Admin** | `admin` | Highest | Full manage access to all resources and system settings. |
+| **HR / Supervisor** | `hr` | High | Can manage employees, time-off requests, and audits timesheets. |
+| **Supervisor (Flag)**| `isSupervisor` | Medium | In addition to their base role, they can access the Supervisor Dashboard and manage direct reports. |
+| **User (Employee)** | `user` | Base | Standard access based on assigned `allowed_screens`. |
 
-## 1. Backend Security Layer (NodeJS/Hono)
-*Location: `mi-casa-server/src/modules/timesheets/timesheets.controller.ts`*
+## Core Architecture: CASL Integration
 
-The backend accepts the authentication cookie (`HttpOnly`), decodes the session, and enforces permissions **before** querying the database.
+### 1. Subject Standardization
+Resources are standardized to match Refine's pluralized names for consistency:
+- `TimeSheets`
+- `TimeOff`
+- `employees`
+- `it-category`
+- `CompanyCalendar`
+- `Supervisor`
 
-### Logic Flow
-When a `GET /api/timesheets` request is received:
+### 2. Action Aliases
+We use aliases to decouple UI actions (Refine) from logical permissions:
+- **`read`**: Maps to `list` and `show`.
+- **`update`**: Maps to `edit`.
+- **`manage`**: Maps to any action.
 
-1.  **Authentication**: Middleware validates session cookie.
-2.  **Role Check**:
-    *   **If Admin/HR**: Request is approved. Query filters (`employee_email`) are respected.
-    *   **If Supervisor**:
-        *   System retrieves `directReports` from the session.
-        *   **Enforcement**: Requested data is intersected with `[Self + Direct Reports]`.
-    *   **If Employee**:
-        *   **Enforcement**: System forcibly sets `employee_email = [CurrentUser.Email]`.
+### 3. ABAC (Ownership & Hierarchy)
+Beyond simple roles, we enforce rules based on record attributes:
+- **Ownership**: Users can only `read`/`update`/`delete` their own `TimeSheets` and `TimeOff` entries (enforced by `userId`).
+- **Hierarchy**: Supervisors can access `TimeSheets` of users listed in their `directReports` array.
+- **Workflow State**: Users can only `update` or `delete` `TimeSheets` if the status is `draft`.
 
-## 2. Frontend Granular Access (React/Refine)
-*Location: `early-lamps-fly/src/App.tsx` & `authStore.ts`*
+## Implementation Details
 
-We support a **Hybrid RBAC** model. A user can have a Role AND/OR specific list of allowed screens.
+### Frontend Layer
+*Location: `mi-casa/src/auth/ability.ts` & `mi-casa/src/App.tsx`*
 
-### Database Schema
-The `user` table includes an `allowed_screens` column (JSON Text), e.g., `['loans', 'TimeSheets']`.
+The `accessControlProvider` uses a memoized CASL `ability` instance. It passes the resource data (if available) to CASL for attribute-level checks.
 
-### Access Control Logic
-```typescript
-can: async ({ resource }) => {
-  // 1. Admin Override
-  if (role === 'admin') return { can: true };
+### Backend Layer
+*Location: `mi-casa-server/src/modules/auth/casl/ability.factory.ts`*
 
-  // 2. Supervisor Special Case
-  if (resource === "Supervisor") {
-    return { can: isSupervisor || role === 'hr' || allowedScreens.includes('Supervisor') };
-  }
+The backend constructs the same `ability` object during the authentication middleware. This object is used in controllers/services to filter database results and validate mutations.
 
-  // 3. Granular Screen Check
-  // Allow if the resource is explicitly listed in the user's allowed_screens list
-  if (allowedScreens.includes(resource)) return { can: true };
+## 🔗 Related Documentation
+For implementation details and code examples, see:
+- [CASL Security Guide](file:///SECURITY_GUIDE_CASL.md)
+- [Frontend Access Control Guide](file:///SECURITY_GUIDE_FRONTEND_CASL.md)
+- [Advanced CASL Patterns](file:///ADVANCED_CASL_PATTERNS.md)
 
-  // 4. Defaults
-  // Some modules like Dashboard might be allowed by default.
-  return { can: false };
-}
-```
-
-## 3. User Management Interface
-*Location: `/admin/users`*
-
-Admins have access to a dedicated **Employee Management** screen where they can:
-1.  See a list of all users.
-2.  Promote/Demote users (change Role).
-3.  Grant/Revoke specific screen access (edit `allowed_screens`).
-
-> **Bootstrapping Note**: To create the *first* Admin, you must update the database manually:
-> ```sql
-> UPDATE "user" SET role = 'admin' WHERE email = 'your-email@example.com';
-> ```
-
-## Diagram
+## Authorization Flow Diagram
 
 ```mermaid
-graph TD
-    User-->|Login| Auth[Better-Auth]
-    Auth-->|Graph Sync| DB[(User Table)]
-    DB-->|Returns Role + AllowedScreens| Session
-    
-    User-->|Navigate to /loans| Frontend
-    Frontend-->|Check AccessControl| Check{Is Admin OR Allowed?}
-    Check-- No --> Block[Hide Menu / 403]
-    Check-- Yes --> API[Call Backend]
-    
-    API-->|Verify Role| BackendCheck{Can Access Data?}
-    BackendCheck-- Yes --> Data
-    BackendCheck-- No --> FilteredData
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant API
+    participant DB
+
+    User->>Frontend: Request Resource (e.g. /TimeSheets)
+    Frontend->>Frontend: ability.can('read', 'TimeSheets')
+    alt No Permission
+        Frontend-->>User: Redirect / Show 403
+    else Has Permission
+        Frontend->>API: GET /api/timesheets
+        API->>API: Load Ability from Session
+        API->>DB: Query with CASL filters (WHERE userId = X)
+        DB-->>API: Results
+        API-->>Frontend: JSON data
+        Frontend-->>User: Render List
+    end
 ```
