@@ -51,13 +51,13 @@ import { useAuthStore } from "@/stores/authStore";
 // --- CONFIGURATION ---
 
 const GROUP_CONFIG = [
-    {
-        label: "Operations",
-        resources: ["TimeSheets"],
-    },
+    // {
+    //     label: "Operations",
+    //     resources: ["TimeSheets"],
+    // },
     {
         label: "Human Resources",
-        resources: ["TimeOff", "TimeOffApprovals", "CompanyCalendar"],
+        resources: ["TimeOff", "TimeOffApprovals", "CompanyCalendar", "TimeSheets"],
     },
     {
          label: "Supervisor",

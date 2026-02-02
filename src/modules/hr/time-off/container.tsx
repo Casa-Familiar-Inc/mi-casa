@@ -36,6 +36,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         name: string; 
         departmentId?: string; 
     }>();
+
     const go = useGo();
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState<Partial<HR_TimeOffRequest>>({
@@ -55,7 +56,9 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
     const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
 
-    const isReadOnly = !!(requestId && identity?.email && formData.employee_email && identity.email !== formData.employee_email);
+    const isOwner = !formData.employee_email || (identity?.email && formData.employee_email && identity.email.toLowerCase() === formData.employee_email.toLowerCase());
+    const canEdit = !requestId || (isOwner && (formData.status === 'Draft' || formData.status === 'Rejected'));
+    const isSupervisorViewing = !!(requestId && !isOwner);
 
     useEffect(() => {
         if (requestId) {
@@ -342,7 +345,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
-            {isReadOnly && formData.status === 'Pending' && (
+            {isSupervisorViewing && formData.status === 'Pending' && (
                 <div className="flex justify-end gap-4 p-4 bg-muted/50 rounded-lg border border-dashed">
                     <Button
                         variant="outline"
@@ -383,7 +386,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 </CardContent>
             </Card>
 
-            {overlappingRequests.length > 0 && status !== 'Approved' && (
+            {overlappingRequests.length > 0 && formData.status !== 'Approved' && (
                 <Alert variant="destructive" className="bg-amber-50 border-amber-200 text-amber-900">
                     <AlertCircle className="h-4 w-4 text-amber-600" />
                     <AlertTitle className="text-xs font-bold uppercase">Overlapping Requests Found</AlertTitle>
@@ -399,7 +402,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 <Card className="w-full">
                     <CardHeader className="bg-black text-white py-2 flex flex-row items-center justify-between">
                         <CardTitle className="uppercase text-xs font-bold">Request Details</CardTitle>
-                        <Tabs value={requestMode} onValueChange={handleModeChange} className={`w-auto ${isReadOnly ? 'pointer-events-none opacity-80' : ''}`}>
+                        <Tabs value={requestMode} onValueChange={handleModeChange} className={`w-auto ${!canEdit ? 'pointer-events-none opacity-80' : ''}`}>
                             <TabsList className="bg-white/10 h-7 p-0.5">
                                 <TabsTrigger value="FULL_DAYS" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
                                     <CalendarDays className="h-3 w-3 mr-1" /> FULL DAYS
@@ -418,7 +421,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
-                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={isReadOnly} />
+                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
@@ -427,20 +430,20 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                         value={formData.end_date}
                                         min={formData.start_date}
                                         onChange={(e) => handleDateChange('end_date', e.target.value)}
-                                        disabled={isReadOnly}
+                                        disabled={!canEdit}
                                     />
                                 </div>
                             </div>
                         ) : (
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
-                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={isReadOnly} />
+                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
                             </div>
                         )}
 
                         <div className="space-y-1.5">
                             <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
-                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} disabled={isReadOnly} />
+                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} disabled={!canEdit} />
                         </div>
 
                         <Separator />
@@ -457,7 +460,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                     <Input
                                         type="number"
                                         step="0.5"
-                                        readOnly={true}
+                                        readOnly={!(canEdit && requestMode === 'PARTIAL_DAY')}
                                         className={`w-24 text-right font-bold text-lg h-9 bg-white ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600 border-blue-400 ring-2 ring-blue-100' : 'text-slate-900 border-slate-300 shadow-inner'}`}
                                         value={formData.total_hours_requested}
                                         onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value) || 0)}
@@ -489,7 +492,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                     id={type.id}
                                     checked={formData.request_type === type.id}
                                     onCheckedChange={() => handleChange('request_type', type.id)}
-                                    disabled={isReadOnly}
+                                    disabled={!canEdit}
                                 />
                                 <Label htmlFor={type.id} className="cursor-pointer">{type.label.toUpperCase()}</Label>
                             </div>
@@ -498,12 +501,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
                     <div className="space-y-2">
                         <Label>REASON:</Label>
-                        <Input value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} disabled={isReadOnly} />
+                        <Input value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} disabled={!canEdit} />
                     </div>
 
                     <div className="space-y-2">
                         <Label>COMMENTS:</Label>
-                        <Textarea value={formData.comments} onChange={(e) => handleChange('comments', e.target.value)} disabled={isReadOnly} />
+                        <Textarea value={formData.comments} onChange={(e) => handleChange('comments', e.target.value)} disabled={!canEdit} />
                     </div>
                 </CardContent>
             </Card>
@@ -556,7 +559,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 </Card>
             )}
 
-            {!isReadOnly && (
+            {!isSupervisorViewing && canEdit && (
                 <div className="flex justify-end gap-4">
                     <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isLoading}>Save Draft</Button>
                     <Button onClick={() => handleSave('Pending')} disabled={isLoading}>Submit Request</Button>

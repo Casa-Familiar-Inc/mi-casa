@@ -85,7 +85,7 @@ export const TimeOffService = {
 
     async getPendingRequests(): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}?status=Pending&_sort=-created`, { credentials: 'include' });
+            const response = await fetch(`${API_URL}/pending`, { credentials: 'include' });
             if (!response.ok) return [];
             return await response.json();
         } catch (error) {
