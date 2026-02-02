@@ -1,4 +1,4 @@
-import { useGo, useList, useDelete } from "@refinedev/core";
+import { useGo, useList, useDelete, CanAccess } from "@refinedev/core";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Edit, Eye, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,35 +39,41 @@ export const ITCategoryList = () => {
             cell: function render({ getValue }) {
                 return (
                     <div className="flex gap-2">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => go({ to: { resource: "IT_Category", action: "edit", id: getValue() as string } })}
-                        >
-                            <Edit size={16} />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => go({ to: { resource: "IT_Category", action: "show", id: getValue() as string } })}
-                        >
-                            <Eye size={16} />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                            onClick={() => {
-                                if (window.confirm("Are you sure you want to delete this category?")) {
-                                    deleteCategory({
-                                        resource: "IT_Category",
-                                        id: getValue() as string,
-                                    });
-                                }
-                            }}
-                        >
-                            <Trash2 size={16} />
-                        </Button>
+                        <CanAccess resource="it-category" action="edit">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => go({ to: { resource: "it-category", action: "edit", id: getValue() as string } })}
+                            >
+                                <Edit size={16} />
+                            </Button>
+                        </CanAccess>
+                        <CanAccess resource="it-category" action="show">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => go({ to: { resource: "it-category", action: "show", id: getValue() as string } })}
+                            >
+                                <Eye size={16} />
+                            </Button>
+                        </CanAccess>
+                        <CanAccess resource="it-category" action="delete">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => {
+                                    if (window.confirm("Are you sure you want to delete this category?")) {
+                                        deleteCategory({
+                                            resource: "it-category",
+                                            id: getValue() as string,
+                                        });
+                                    }
+                                }}
+                            >
+                                <Trash2 size={16} />
+                            </Button>
+                        </CanAccess>
                     </div>
                 );
             },
@@ -75,7 +81,7 @@ export const ITCategoryList = () => {
     ];
 
     const { result } = useList({
-        resource: "IT_Category",
+        resource: "it-category",
     });
 
     const categoryData = result?.data ?? [];
@@ -87,13 +93,20 @@ export const ITCategoryList = () => {
     });
 
     return (
-        <div className="p-4">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Categories</h1>
-                <Button onClick={() => go({ to: { resource: "IT_Category", action: "create" } })}>
-                    <Plus className="mr-2 h-4 w-4" /> Create Category
-                </Button>
-            </div>
+        <CanAccess 
+            resource="it-category" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para ver las categorías de almacén.</div>}
+        >
+            <div className="p-4">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">Categories</h1>
+                    <CanAccess resource="it-category" action="create">
+                        <Button onClick={() => go({ to: { resource: "it-category", action: "create" } })}>
+                            <Plus className="mr-2 h-4 w-4" /> Create Category
+                        </Button>
+                    </CanAccess>
+                </div>
             
             <Card>
                 <CardHeader>
@@ -134,6 +147,7 @@ export const ITCategoryList = () => {
                     </Table>
                 </CardContent>
             </Card>
-        </div>
+            </div>
+        </CanAccess>
     );
 };

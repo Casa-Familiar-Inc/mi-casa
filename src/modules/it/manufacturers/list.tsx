@@ -1,4 +1,4 @@
-import { useGo, useList } from "@refinedev/core";
+import { useGo, useList, CanAccess } from "@refinedev/core";
 import { ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import { Edit, Eye, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,20 +41,24 @@ export const ITManufacturerList = () => {
             cell: function render({ getValue }) {
                 return (
                     <div className="flex gap-2">
-                         <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => go({ to: { resource: "IT_Manufacturer", action: "edit", id: getValue() as string } })}
-                        >
-                            <Edit size={16} />
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => go({ to: { resource: "IT_Manufacturer", action: "show", id: getValue() as string } })}
-                        >
-                            <Eye size={16} />
-                        </Button>
+                        <CanAccess resource="it-manufacturer" action="edit">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => go({ to: { resource: "it-manufacturer", action: "edit", id: getValue() as string } })}
+                            >
+                                <Edit size={16} />
+                            </Button>
+                        </CanAccess>
+                        <CanAccess resource="it-manufacturer" action="show">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => go({ to: { resource: "it-manufacturer", action: "show", id: getValue() as string } })}
+                            >
+                                <Eye size={16} />
+                            </Button>
+                        </CanAccess>
                     </div>
                 );
             },
@@ -62,7 +66,7 @@ export const ITManufacturerList = () => {
     ];
 
     const { result } = useList({
-        resource: "IT_Manufacturer",
+        resource: "it-manufacturer",
     });
 
     const manufacturerData = result?.data ?? [];
@@ -74,13 +78,20 @@ export const ITManufacturerList = () => {
     });
 
     return (
-        <div className="p-4">
-            <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold">Manufacturers</h1>
-                <Button onClick={() => go({ to: { resource: "IT_Manufacturer", action: "create" } })}>
-                    <Plus className="mr-2 h-4 w-4" /> Create Manufacturer
-                </Button>
-            </div>
+        <CanAccess 
+            resource="it-manufacturer" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para ver los fabricantes de almacén.</div>}
+        >
+            <div className="p-4">
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-3xl font-bold">Manufacturers</h1>
+                    <CanAccess resource="it-manufacturer" action="create">
+                        <Button onClick={() => go({ to: { resource: "it-manufacturer", action: "create" } })}>
+                            <Plus className="mr-2 h-4 w-4" /> Create Manufacturer
+                        </Button>
+                    </CanAccess>
+                </div>
             
             <Card>
                 <CardHeader>
@@ -121,6 +132,7 @@ export const ITManufacturerList = () => {
                     </Table>
                 </CardContent>
             </Card>
-        </div>
+            </div>
+        </CanAccess>
     );
 };

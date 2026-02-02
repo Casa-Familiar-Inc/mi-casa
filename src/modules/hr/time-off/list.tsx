@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useGetIdentity, useGo } from '@refinedev/core';
+import { useGetIdentity, useGo, CanAccess } from '@refinedev/core';
 import { TimeOffService } from '../../../services/timeOffService';
 import { HR_TimeOffRequest } from '../../../types/timeoff';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,13 +79,20 @@ export const TimeOffList = () => {
     };
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">My Time Off Requests</h1>
-                <Button onClick={() => go({ to: '/hr/time-off/new' })}>
-                    New Request
-                </Button>
-            </div>
+        <CanAccess 
+            resource="TimeOff" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para ver tus solicitudes.</div>}
+        >
+            <div className="p-6 space-y-6">
+                <div className="flex justify-between items-center">
+                    <h1 className="text-2xl font-bold">My Time Off Requests</h1>
+                    <CanAccess resource="TimeOff" action="create">
+                        <Button onClick={() => go({ to: '/hr/time-off/new' })}>
+                            New Request
+                        </Button>
+                    </CanAccess>
+                </div>
 
             <Card>
                 <CardHeader>
@@ -94,12 +101,14 @@ export const TimeOffList = () => {
                 <CardContent>
                     {isLoading ? <div>Loading...</div> : (
                         requests.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-12 space-y-4 border border-dashed rounded-lg">
-                                <p className="text-muted-foreground text-lg">You haven't created any requests yet.</p>
-                                <Button onClick={() => go({ to: '/hr/time-off/new' })}>
-                                    Create Request
-                                </Button>
-                            </div>
+                                <div className="flex flex-col items-center justify-center py-12 space-y-4 border border-dashed rounded-lg">
+                                    <p className="text-muted-foreground text-lg">You haven't created any requests yet.</p>
+                                    <CanAccess resource="TimeOff" action="create">
+                                        <Button onClick={() => go({ to: '/hr/time-off/new' })}>
+                                            Create Request
+                                        </Button>
+                                    </CanAccess>
+                                </div>
                         ) : (
                             <Table>
                                 <TableHeader>
@@ -123,28 +132,34 @@ export const TimeOffList = () => {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right flex justify-end gap-2">
-                                                <Button variant="ghost" size="sm" onClick={() => go({ to: `/hr/time-off/view/${r.id}` })}>
-                                                    <Eye className="h-4 w-4 mr-1" /> View
-                                                </Button>
-                                                {(r.status === 'Draft' || r.status === 'Pending') && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => handleDelete(r.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                                <CanAccess resource="TimeOff" action="show">
+                                                    <Button variant="ghost" size="sm" onClick={() => go({ to: `/hr/time-off/view/${r.id}` })}>
+                                                        <Eye className="h-4 w-4 mr-1" /> View
                                                     </Button>
+                                                </CanAccess>
+                                                {(r.status === 'Draft' || r.status === 'Pending') && (
+                                                    <CanAccess resource="TimeOff" action="delete">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                            onClick={() => handleDelete(r.id)}
+                                                        >
+                                                            <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                                        </Button>
+                                                    </CanAccess>
                                                 )}
                                                 {(r.status === 'Pending' || r.status === 'Approved') && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="text-amber-600 hover:text-amber-800 hover:bg-amber-50"
-                                                        onClick={() => handleWithdraw(r.id)}
-                                                    >
-                                                        <RotateCcw className="h-4 w-4 mr-1" /> Retract
-                                                    </Button>
+                                                    <CanAccess resource="TimeOff" action="update">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-amber-600 hover:text-amber-800 hover:bg-amber-50"
+                                                            onClick={() => handleWithdraw(r.id)}
+                                                        >
+                                                            <RotateCcw className="h-4 w-4 mr-1" /> Retract
+                                                        </Button>
+                                                    </CanAccess>
                                                 )}
                                             </TableCell>
                                         </TableRow>
@@ -155,6 +170,7 @@ export const TimeOffList = () => {
                     )}
                 </CardContent>
             </Card>
-        </div>
+            </div>
+        </CanAccess>
     );
 };

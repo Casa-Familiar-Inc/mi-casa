@@ -9,6 +9,7 @@ export type Subjects =
     | "TimeOffApprovals"
     | "it-category"
     | "CompanyCalendar"
+    | "departments"
     | "all";
 
 
@@ -41,7 +42,6 @@ export interface UserPayload {
 }
 
 export function defineAbilityFor(user: UserPayload) {
-    console.log("[Ability] Defining for user:", user.id, "Role:", user.role, "Screens:", user.allowedScreens);
     const resolveAction = createAliasResolver({
         list: 'read',
         show: 'read',
@@ -62,14 +62,31 @@ export function defineAbilityFor(user: UserPayload) {
     screens.forEach(screenPerm => {
         if (screenPerm.includes(':')) {
             const [subject, action] = screenPerm.split(':').map(s => s.trim());
-            // @ts-ignore
-            can(action, subject);
+            if (action === 'read') {
+                // @ts-ignore
+                can('list', subject);
+                // @ts-ignore
+                can('show', subject);
+                // @ts-ignore
+                can('read', subject);
+            } else if (action === 'update') {
+                // @ts-ignore
+                can('edit', subject);
+                // @ts-ignore
+                can('update', subject);
+            } else {
+                // @ts-ignore
+                can(action, subject);
+            }
         } else {
             // Legacy / Full access for that specific screen
             // @ts-ignore
             can("manage", screenPerm.trim());
         }
     });
+
+    // --- DEBUG ---
+    console.log("[Ability] Parsed Screens:", screens);
 
     // --- ADMIN ---
     if (role === 'admin') {
@@ -98,7 +115,14 @@ export function defineAbilityFor(user: UserPayload) {
         can("manage", "TimeOff");
         can("read", "TimeSheets");
         can("read", "employees");
+        can("read", "departments");
     }
 
-    return build(abilityOptions);
+    const ability = build(abilityOptions);
+
+    // Test check for TimeSheets
+    console.log("[Ability] Test check TimeSheets:list ->", ability.can('list', 'TimeSheets'));
+    console.log("[Ability] Rules count:", ability.rules.length);
+
+    return ability;
 }

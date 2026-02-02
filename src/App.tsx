@@ -64,7 +64,6 @@ function App() {
   useEffect(() => {
     if (session?.user) {
       const user = session.user as any;
-      console.log("[App] Session User Object:", user);
       
       let hasReports = false;
       let reports = user.directReports;
@@ -101,8 +100,6 @@ function App() {
         }
       }
 
-      console.log("[App] Parsed Screens:", screens);
-
       // Update Store (Auto-persists)
       setAuthData({
         isSupervisor: isSup,
@@ -132,6 +129,25 @@ function App() {
       meta: {
         label: "Employees",
         icon: <Users className="h-4 w-4" />
+      }
+    },
+    {
+      name: "it-category",
+      list: "/it-category",
+      create: "/it-category/create",
+      edit: "/it-category/edit/:id",
+      show: "/it-category/show/:id",
+      meta: {
+        label: "IT Categories",
+        icon: <Tags className="h-4 w-4" />
+      }
+    },
+    {
+      name: "it-manufacturer",
+      list: "/it-manufacturer",
+      meta: {
+        label: "IT Manufacturers",
+        icon: <Factory className="h-4 w-4" />
       }
     },
     {
@@ -233,12 +249,7 @@ function App() {
 
                   const can = ability.can(act, subject);
                   
-                  // Debug logging to help identify why access is denied
-                  console.log(`[ACL] Check: action="${act}", resource="${resource}", result=${can}`);
-                  
-                  if (!can) {
-                    console.warn(`[ACL] DENIED: action="${act}", resource="${resource}"`);
-                  }
+                  console.log(`[ACL] Check: ${act} on ${typeof subject === 'string' ? subject : JSON.stringify(subject)} -> Result: ${can}`);
 
                   return { 
                     can,

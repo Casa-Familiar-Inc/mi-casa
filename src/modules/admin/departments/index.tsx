@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { OrganizationService, Department } from '@/services/organizationService';
+import { CanAccess } from '@refinedev/core';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -64,15 +65,22 @@ export const DepartmentsList: React.FC = () => {
     };
 
     return (
-        <div className="space-y-6">
+        <CanAccess 
+            resource="departments" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para administrar departamentos.</div>}
+        >
+            <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Organization</h1>
                     <p className="text-muted-foreground">Manage departments and reporting structure.</p>
                 </div>
-                <Button onClick={handleCreate}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Department
-                </Button>
+                <CanAccess resource="departments" action="manage">
+                    <Button onClick={handleCreate}>
+                        <Plus className="mr-2 h-4 w-4" /> Add Department
+                    </Button>
+                </CanAccess>
             </div>
 
             <Card>
@@ -131,12 +139,16 @@ export const DepartmentsList: React.FC = () => {
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-2">
-                                                <Button variant="ghost" size="icon" onClick={() => handleEdit(dept)}>
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(dept.id)}>
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                <CanAccess resource="departments" action="manage">
+                                                    <Button variant="ghost" size="icon" onClick={() => handleEdit(dept)}>
+                                                        <Pencil className="h-4 w-4" />
+                                                    </Button>
+                                                </CanAccess>
+                                                <CanAccess resource="departments" action="manage">
+                                                    <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => handleDelete(dept.id)}>
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </CanAccess>
                                             </div>
                                         </TableCell>
                                     </TableRow>
@@ -153,6 +165,7 @@ export const DepartmentsList: React.FC = () => {
                 department={selectedDept} 
                 onSave={handleSave} 
             />
-        </div>
+            </div>
+        </CanAccess>
     );
 };

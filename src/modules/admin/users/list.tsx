@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { useNavigation, useLogout } from "@refinedev/core";
+import { useNavigation, useLogout, CanAccess } from "@refinedev/core";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -28,7 +28,8 @@ const AVAILABLE_SCREENS = [
     { id: 'TimeSheets', label: 'TimeSheets' },
     { id: 'TimeOff', label: 'Time Off' },
     { id: 'Supervisor', label: 'Supervisor Dashboard' },
-    { id: 'employees', label: 'Employee Management' },
+    { id: 'employees', label: 'User Management' },
+    { id: 'departments', label: 'Departments' },
     { id: 'it-category', label: 'IT Settings' }
 ];
 
@@ -187,14 +188,21 @@ export const UserList: React.FC = () => {
     if (isLoading) return <div>Loading users...</div>;
 
     return (
-        <div className="p-6">
-            <Card>
+        <CanAccess 
+            resource="employees" 
+            action="list"
+            fallback={<div className="p-8 text-center text-red-500 font-bold">No tienes permiso para administrar usuarios.</div>}
+        >
+            <div className="p-6">
+                <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                     <CardTitle>User Management</CardTitle>
-                    <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="sm">
-                        <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                        {isSyncing ? 'Syncing...' : 'Sync from Entra ID'}
-                    </Button>
+                    <CanAccess resource="employees" action="manage">
+                        <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="sm">
+                            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'Syncing...' : 'Sync from Entra ID'}
+                        </Button>
+                    </CanAccess>
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -226,9 +234,11 @@ export const UserList: React.FC = () => {
                                     <TableCell>{user.officeLocation || '-'}</TableCell>
                                     <TableCell className="text-right">
                                         <Dialog open={!!editingUser} onOpenChange={(o) => !o && setEditingUser(null)}>
-                                            <DialogTrigger asChild>
-                                                <Button size="sm" variant="outline" onClick={() => handleEditClick(user)}>Edit Permissions</Button>
-                                            </DialogTrigger>
+                                            <CanAccess resource="employees" action="update">
+                                                <DialogTrigger asChild>
+                                                    <Button size="sm" variant="outline" onClick={() => handleEditClick(user)}>Edit Permissions</Button>
+                                                </DialogTrigger>
+                                            </CanAccess>
                                             {editingUser?.id === user.id && (
                                                 <DialogContent className="sm:max-w-[425px]">
                                                     <DialogHeader>
@@ -276,7 +286,7 @@ export const UserList: React.FC = () => {
                                                                     <TableHeader className="bg-muted/50">
                                                                         <TableRow className="hover:bg-transparent">
                                                                             <TableHead className="w-[150px] py-2 text-xs">Module</TableHead>
-                                                                            <TableHead className="text-center py-2 text-xs">Read</TableHead>
+                                                                            <TableHead className="text-center py-2 text-xs">Read/List</TableHead>
                                                                             <TableHead className="text-center py-2 text-xs">Write</TableHead>
                                                                             <TableHead className="text-center py-2 text-xs">Del</TableHead>
                                                                             <TableHead className="text-center py-2 text-xs">Full</TableHead>
@@ -355,5 +365,6 @@ export const UserList: React.FC = () => {
                 </CardContent>
             </Card>
         </div>
+        </CanAccess>
     );
 };

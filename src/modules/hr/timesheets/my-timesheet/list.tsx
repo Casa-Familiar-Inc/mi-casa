@@ -132,9 +132,11 @@ export const TimeSheetList = () => {
                         <TableCell>{Number(h.total_hours || 0).toFixed(2)}</TableCell>
                         <TableCell>{h.employee_signed_by || '-'}</TableCell>
                         <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" onClick={() => go({ to: `/timesheets/view/${h.id}` })}>
-                                {showEmployeeName ? 'Review' : 'View'}
-                            </Button>
+                            <CanAccess resource="TimeSheets" action="show">
+                                <Button variant="ghost" size="sm" onClick={() => go({ to: `/timesheets/view/${h.id}` })}>
+                                    {showEmployeeName ? 'Review' : 'View'}
+                                </Button>
+                            </CanAccess>
                         </TableCell>
                     </TableRow>
                 ))}
@@ -151,9 +153,11 @@ export const TimeSheetList = () => {
             <div className="p-6 space-y-6">
                 <div className="flex justify-between items-center">
                     <h1 className="text-2xl font-bold">My Timesheets</h1>
-                    <Button onClick={() => setIsCreateOpen(true)}>
-                        Create Timesheet
-                    </Button>
+                    <CanAccess resource="TimeSheets" action="create">
+                        <Button onClick={() => setIsCreateOpen(true)}>
+                            Create Timesheet
+                        </Button>
+                    </CanAccess>
                 </div>
 
                 <Card>
@@ -165,9 +169,11 @@ export const TimeSheetList = () => {
                             headers.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-12 space-y-4 border border-dashed rounded-lg">
                                     <p className="text-muted-foreground text-lg">You haven't created any timesheets yet.</p>
-                                    <Button onClick={() => setIsCreateOpen(true)}>
-                                        Create Timesheet
-                                    </Button>
+                                    <CanAccess resource="TimeSheets" action="create">
+                                        <Button onClick={() => setIsCreateOpen(true)}>
+                                            Create Timesheet
+                                        </Button>
+                                    </CanAccess>
                                 </div>
                             ) : renderTable(headers)
                         )}
