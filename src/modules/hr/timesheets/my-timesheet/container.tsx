@@ -88,10 +88,10 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const [tempSettings, setTempSettings] = useState<HR_EmployeeSettings>({
         id: '',
         user_email: '',
-        default_time_in: '08:00',
-        default_lunch_out: '12:00',
-        default_lunch_in: '13:00',
-        default_time_out: '17:00'
+        default_time_in: '',
+        default_lunch_out: '',
+        default_lunch_in: '',
+        default_time_out: ''
     });
 
 
@@ -352,17 +352,16 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         while (current <= end) {
             const dateStr = current.toLocaleDateString('en-CA');
             const dayName = days[current.getDay()];
-            const isWeekend = current.getDay() === 0 || current.getDay() === 6;
 
             logs.push({
                 date: dateStr,
                 day_name: dayName,
-                time_in: isWeekend ? '' : (settings?.default_time_in || '08:00'),
-                lunch_out: isWeekend ? '' : (settings?.default_lunch_out || '12:00'),
-                lunch_in: isWeekend ? '' : (settings?.default_lunch_in || '13:00'),
-                time_out: isWeekend ? '' : (settings?.default_time_out || '17:00'),
-                reg_hours: isWeekend ? 0 : 8,
-                daily_total: isWeekend ? 0 : 8,
+                time_in: '',
+                lunch_out: '',
+                lunch_in: '',
+                time_out: '',
+                reg_hours: 0,
+                daily_total: 0,
                 wd: 0, vac: 0, hol: 0, sick: 0,
                 ber: 0, ot: 0, jury: 0, unpd: 0
             });
