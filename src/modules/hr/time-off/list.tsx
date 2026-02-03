@@ -15,6 +15,16 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Trash2, Eye, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export const TimeOffList = () => {
     const { data: identity } = useGetIdentity<{ email: string, name: string }>();
@@ -35,35 +45,25 @@ export const TimeOffList = () => {
         setIsLoading(false);
     };
 
-    const handleDelete = async (id: string) => {
-        if (!window.confirm("Are you sure you want to delete this request? This action cannot be undone.")) {
-            return;
-        }
+    const executeAction = async () => {
+        if (!confirmAction) return;
+        const { id, type } = confirmAction;
+        setConfirmAction(null);
 
         try {
-            await TimeOffService.deleteRequest(id);
-            toast.success("Request deleted successfully");
+            if (type === 'delete') {
+                await TimeOffService.deleteRequest(id);
+                toast.success("Request deleted successfully");
+            } else {
+                await TimeOffService.updateStatus(id, 'Withdrawn', undefined, 'Employee');
+                toast.success("Request withdrawn successfully");
+            }
+            
             if (identity?.email) {
                 loadData(identity.email);
             }
         } catch (error: any) {
-            toast.error(error.message || "Failed to delete request");
-        }
-    };
-
-    const handleWithdraw = async (id: string) => {
-        if (!window.confirm("Are you sure you want to withdraw this request?")) {
-            return;
-        }
-
-        try {
-            await TimeOffService.updateStatus(id, 'Withdrawn', undefined, 'Employee');
-            toast.success("Request withdrawn successfully");
-            if (identity?.email) {
-                loadData(identity.email);
-            }
-        } catch (error: any) {
-            toast.error(error.message || "Failed to withdraw request");
+            toast.error(error.message || `Failed to ${type} request`);
         }
     };
 
