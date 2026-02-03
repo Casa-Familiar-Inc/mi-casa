@@ -28,7 +28,7 @@ export const TimeSheetList = () => {
     // Create Dialog State
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>('');
-    const [periods, setPeriods] = useState<{key:string, label:string, start:string, end:string}[]>([]);
+    const [periods, setPeriods] = useState<{key:string, label:string, start:string, end:string, id?: string}[]>([]);
 
     useEffect(() => {
         if (identity?.email) {
@@ -37,8 +37,41 @@ export const TimeSheetList = () => {
     }, [identity]);
 
     // Update periods whenever headers change
+    // Load Open Pay Periods from Backend
+    // Load Open Pay Periods from Backend
     useEffect(() => {
-         setPeriods(generatePeriods(12));
+        const loadPeriods = async () => {
+             try {
+                 console.log("Fetching periods...");
+                 // Fetch ALL to debug
+                 const allPeriods = await TimeSheetService.getPayPeriods(); 
+                 console.log("All Periods:", allPeriods);
+
+                 const openPeriods = allPeriods.filter(x => x.status === 'Open');
+                 
+                 // Map to UI format
+                 const uiPeriods = openPeriods.map(x => ({
+                     key: x.id, 
+                     label: x.name, 
+                     start: x.start_date, 
+                     end: x.end_date,
+                     id: x.id
+                 }));
+                 
+                 // Filter out those that user already has a timesheet for
+                 if (headers.length > 0) {
+                     console.log("Existing Headers:", headers.map(h => h.period_start));
+                     const filtered = uiPeriods.filter(p => !headers.some(h => h.period_start === p.start));
+                     console.log("Filtered Periods:", filtered);
+                     setPeriods(filtered);
+                 } else {
+                     setPeriods(uiPeriods);
+                 }
+             } catch(e) {
+                 console.error("Error loading periods", e);
+             }
+        };
+        loadPeriods();
     }, [headers]);
 
     const loadData = async () => {
@@ -48,41 +81,6 @@ export const TimeSheetList = () => {
         setHeaders(myData);
         setIsLoading(false);
     };
-    
-    // Helper to generate periods (duplicated for now from Container, could be util)
-    const generatePeriods = (count: number) => {
-        const list = [];
-        let date = new Date();
-        date.setDate(date.getDate() > 15 ? 16 : 1);
-
-        for (let i = 0; i < count; i++) {
-            const y = date.getFullYear();
-            const m = date.getMonth();
-            const d = date.getDate();
-            
-            let start = '', end = '', label = '';
-            const monthName = date.toLocaleString('default', { month: 'long' });
-
-            if (d <= 15) {
-                start = new Date(y, m, 1).toLocaleDateString('en-CA');
-                end = new Date(y, m, 15).toLocaleDateString('en-CA');
-                label = `${monthName} 1 - 15, ${y}`;
-                date = new Date(y, m - 1, 16); 
-            } else {
-                start = new Date(y, m, 16).toLocaleDateString('en-CA');
-                end = new Date(y, m + 1, 0).toLocaleDateString('en-CA');
-                label = `${monthName} 16 - End, ${y}`;
-                date = new Date(y, m, 1);
-            }
-            list.push({ key: start, label, start, end });
-        }
-        
-        // Filter out existing periods
-        if (headers.length > 0) {
-            return list.filter(p => !headers.some(h => h.period_start === p.start));
-        }
-        return list;
-    };
 
     const handleCreate = async () => {
         if (!selectedPeriodKey || !identity?.email) return;
@@ -90,7 +88,7 @@ export const TimeSheetList = () => {
         if (!p) return;
 
         try {
-            const id = await TimeSheetService.ensureTimeSheet(identity.email, p.start, p.end, identity.name || 'Employee');
+            const id = await TimeSheetService.ensureTimeSheet(identity.email, p.start, p.end, identity.name || 'Employee', p.id);
             toast.success("Opening Timesheet...");
             go({ to: `/timesheets/view/${id}` });
         } catch (error) {

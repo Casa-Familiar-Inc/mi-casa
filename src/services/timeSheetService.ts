@@ -90,7 +90,7 @@ export const TimeSheetService = {
         }
     },
 
-    async ensureTimeSheet(email: string, start: string, end: string, user: string): Promise<string> {
+    async ensureTimeSheet(email: string, start: string, end: string, user: string, payPeriodId?: string): Promise<string> {
         const existing = await this.getTimeSheet(email, start);
         if (existing) {
             return existing.header.id;
@@ -106,6 +106,7 @@ export const TimeSheetService = {
                     employee_name: user,
                     period_start: start,
                     period_end: end,
+                    pay_period_id: payPeriodId,
                     status: 'Draft',
                     total_hours: 0,
                 }),
@@ -213,6 +214,52 @@ export const TimeSheetService = {
             if (!response.ok) throw new Error("Failed to save settings");
         } catch (error) {
             console.error("Error saving user settings:", error);
+            throw error;
+        }
+    },
+
+    async updateTimeSheet(id: string, updates: Partial<TimeSheetFull>): Promise<void> {
+        try {
+            await fetch(`${API_BASE}/timesheets/${id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify(updates),
+            });
+        } catch (error) {
+            console.error("Error updating timesheet:", error);
+            throw error;
+        }
+    },
+
+    // --- PAY PERIODS ---
+
+    async getPayPeriods(status?: 'Open' | 'Closed'): Promise<{ id: string, name: string, start_date: string, end_date: string, status: string }[]> {
+        try {
+            const url = status
+                ? `${API_BASE}/pay-periods?status=${status}`
+                : `${API_BASE}/pay-periods`;
+            const response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching pay periods:", error);
+            return [];
+        }
+    },
+
+    async createPayPeriod(name: string, start: string, end: string): Promise<any> {
+        try {
+            const response = await fetch(`${API_BASE}/pay-periods`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: 'include',
+                body: JSON.stringify({ name, start_date: start, end_date: end }),
+            });
+            if (!response.ok) throw new Error("Failed to create period");
+            return await response.json();
+        } catch (error) {
+            console.error(error);
             throw error;
         }
     },

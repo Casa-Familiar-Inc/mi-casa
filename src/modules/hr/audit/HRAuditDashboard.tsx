@@ -22,6 +22,23 @@ import {
     TableHeader,
     TableRow,
 } from "../../../components/ui/table";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { 
     Download, 
     Calendar as CalendarIcon, 
@@ -40,32 +57,59 @@ import { toast } from "sonner";
 
 export const HRAuditDashboard = () => {
     // State for Timesheets
-    const [tsStart, setTsStart] = useState<Date | undefined>(
-        startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }) 
-    );
-    const [tsEnd, setTsEnd] = useState<Date | undefined>(
-        addDays(startOfWeek(subWeeks(new Date(), 1), { weekStartsOn: 1 }), 6)
-    );
+    const [periods, setPeriods] = useState<any[]>([]); // Pay Periods
+    const [selectedPeriodId, setSelectedPeriodId] = useState<string>('');
+    const [isCreatePeriodOpen, setIsCreatePeriodOpen] = useState(false);
+    
+    // New Period Form State
+    const [newPeriodStart, setNewPeriodStart] = useState<Date | undefined>();
+    const [newPeriodEnd, setNewPeriodEnd] = useState<Date | undefined>();
+    const [newPeriodName, setNewPeriodName] = useState('');
+
     const [timesheets, setTimesheets] = useState<HR_TimeSheetHeader[]>([]);
     const [loadingTimesheets, setLoadingTimesheets] = useState(false);
 
-    // State for Time Off
+    // State for Time Off (Still date range, or link to period? Let's keep precise date range for audits)
+    // Actually, user wants single source of truth. So if I select a period, Time Off should also filter by that period dates.
     const [timeOffStart, setTimeOffStart] = useState<Date | undefined>(subWeeks(new Date(), 1));
     const [timeOffEnd, setTimeOffEnd] = useState<Date | undefined>(new Date());
     const [timeOffRequests, setTimeOffRequests] = useState<HR_TimeOffRequest[]>([]);
     const [loadingTimeOff, setLoadingTimeOff] = useState(false);
 
-    // Fetch Timesheets when dates change
+    // Fetch Periods on Mount
     useEffect(() => {
-        if (!tsStart || !tsEnd) return;
+        loadPeriods();
+    }, []);
+
+    const loadPeriods = async () => {
+        const data = await TimeSheetService.getPayPeriods(); // detailed?
+        
+        // If no periods, empty default
+        setPeriods(data);
+        
+        // Auto-select most recent Open period or just most recent
+        if (data.length > 0) {
+            const active = data.find((p:any) => p.status === 'Open') || data[0];
+            setSelectedPeriodId(active.id);
+        }
+    };
+
+    // Fetch Timesheets when Selected Period changes
+    useEffect(() => {
+        if (!selectedPeriodId) return;
+        const currentPeriod = periods.find(p => p.id === selectedPeriodId);
+        if (!currentPeriod) return;
+
         const fetchTimesheets = async () => {
             setLoadingTimesheets(true);
             try {
-                const s = format(tsStart, "yyyy-MM-dd");
-                const e = format(tsEnd, "yyyy-MM-dd");
-                const data = await TimeSheetService.getAllTimeSheets(s, e);
+                // Sync Time Off Dates too
+                setTimeOffStart(new Date(currentPeriod.start_date + 'T00:00:00'));
+                setTimeOffEnd(new Date(currentPeriod.end_date + 'T00:00:00'));
+
+                const data = await TimeSheetService.getAllTimeSheets(currentPeriod.start_date, currentPeriod.end_date);
                 setTimesheets(data);
-                toast.success(`Loaded ${data.length} timesheets`);
+                toast.success(`Loaded ${data.length} timesheets for ${currentPeriod.name}`);
             } catch (error) {
                 console.error(error);
                 toast.error("Failed to load timesheets");
@@ -74,7 +118,65 @@ export const HRAuditDashboard = () => {
             }
         };
         fetchTimesheets();
-    }, [tsStart, tsEnd]);
+    }, [selectedPeriodId, periods]);
+
+    const handleCreatePeriod = async () => {
+        if (!newPeriodStart || !newPeriodEnd || !newPeriodName) {
+            toast.warning("Please fill all fields");
+            return;
+        }
+        try {
+            await TimeSheetService.createPayPeriod(
+                newPeriodName,
+                format(newPeriodStart, 'yyyy-MM-dd'),
+                format(newPeriodEnd, 'yyyy-MM-dd')
+            );
+            toast.success("Period Created");
+            setIsCreatePeriodOpen(false);
+            loadPeriods(); // Refresh list
+        } catch (e) {
+            toast.error("Failed to create period");
+        }
+    }
+
+    const suggestNextPeriod = () => {
+        // Find latest period end date
+        let start = new Date();
+        let end = new Date();
+        let name = '';
+
+        if (periods.length > 0) {
+            // Sort by end_date desc just in case
+            const latest = [...periods].sort((a,b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime())[0];
+            const lastEnd = new Date(latest.end_date + 'T00:00:00');
+            start = addDays(lastEnd, 1);
+        } else {
+            // Default to 1st of current month
+            start = new Date();
+            start.setDate(1);
+        }
+
+        // Logic: if start is 1st -> end is 15th. If 16th -> end is last day.
+        const d = start.getDate();
+        const y = start.getFullYear();
+        const m = start.getMonth();
+
+        if (d <= 15) {
+            // First Half
+             start = new Date(y, m, 1);
+             end = new Date(y, m, 15);
+             name = `Period 1 - ${format(start, 'MMMM yyyy')}`;
+        } else {
+             start = new Date(y, m, 16);
+             end = new Date(y, m + 1, 0); // Last day
+             name = `Period 2 - ${format(start, 'MMMM yyyy')}`;
+        }
+        
+        setNewPeriodStart(start);
+        setNewPeriodEnd(end);
+        setNewPeriodName(name);
+        setIsCreatePeriodOpen(true);
+    };
 
     // Fetch TimeOff Requests when dates change (optional auto-fetch or manual?)
     // Let's make it manual or effect-based. Effect-based is smoother.
@@ -108,7 +210,8 @@ export const HRAuditDashboard = () => {
     };
 
     const handleDownloadTimesheets = async () => {
-        if (!tsStart || !tsEnd || timesheets.length === 0) {
+        const currentPeriod = periods.find(p => p.id === selectedPeriodId);
+        if (!currentPeriod || timesheets.length === 0) {
             toast.warning("No timesheets to download");
             return;
         }
@@ -130,7 +233,7 @@ export const HRAuditDashboard = () => {
             const detailedTimesheetsPromises = timesheets.map(t => TimeSheetService.getTimeSheetById(t.id));
             const detailedTimesheets = (await Promise.all(detailedTimesheetsPromises)).filter(Boolean); // removes nulls
 
-            generateBulkTimesheetPDF(detailedTimesheets as any, format(tsStart, "yyyy-MM-dd"));
+            generateBulkTimesheetPDF(detailedTimesheets as any, currentPeriod.name);
             toast.success("Timesheets PDF downloaded!");
         } catch (e) {
             console.error(e);
@@ -172,38 +275,74 @@ export const HRAuditDashboard = () => {
                         Timesheets (Weekly)
                     </h2>
                     <div className="flex items-center gap-2">
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !tsStart && "text-muted-foreground")}>
-                                    {tsStart ? format(tsStart, "PPP") : <span>Start Date</span>}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        <Select value={selectedPeriodId} onValueChange={setSelectedPeriodId}>
+                            <SelectTrigger className="w-[280px]">
+                                <SelectValue placeholder="Select Pay Period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {periods.map((p: any) => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                        {p.name} ({p.status})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        <Dialog open={isCreatePeriodOpen} onOpenChange={setIsCreatePeriodOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" onClick={suggestNextPeriod}>
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    New Period
                                 </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                    mode="single"
-                                    selected={tsStart}
-                                    onSelect={setTsStart}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant={"outline"} className={cn("w-[240px] pl-3 text-left font-normal", !tsEnd && "text-muted-foreground")}>
-                                    {tsEnd ? format(tsEnd, "PPP") : <span>End Date</span>}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="end">
-                                <Calendar
-                                    mode="single"
-                                    selected={tsEnd}
-                                    onSelect={setTsEnd}
-                                    initialFocus
-                                />
-                            </PopoverContent>
-                        </Popover>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Generate New Pay Period</DialogTitle>
+                                    <DialogDescription>
+                                        Define the start and end dates for the next payroll cycle.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                     <div className="grid gap-2">
+                                        <label>Period Name</label>
+                                        <Input value={newPeriodName} onChange={e => setNewPeriodName(e.target.value)} />
+                                     </div>
+                                     <div className="grid grid-cols-2 gap-4">
+                                         <div className="grid gap-2">
+                                             <label>Start Date</label>
+                                             <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !newPeriodStart && "text-muted-foreground")}>
+                                                        {newPeriodStart ? format(newPeriodStart, "PPP") : <span>Start</span>}
+                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar mode="single" selected={newPeriodStart} onSelect={setNewPeriodStart} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
+                                         </div>
+                                         <div className="grid gap-2">
+                                             <label>End Date</label>
+                                             <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !newPeriodEnd && "text-muted-foreground")}>
+                                                        {newPeriodEnd ? format(newPeriodEnd, "PPP") : <span>End</span>}
+                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar mode="single" selected={newPeriodEnd} onSelect={setNewPeriodEnd} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
+                                         </div>
+                                     </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button onClick={handleCreatePeriod}>Create Period</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                         <Button onClick={handleDownloadTimesheets} disabled={loadingTimesheets || timesheets.length === 0}>
                             <Download className="mr-2 h-4 w-4" />
                             Export PDF

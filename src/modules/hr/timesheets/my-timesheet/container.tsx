@@ -104,9 +104,21 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const init = async () => {
         setIsLoading(true);
         try {
-            // 1. Generate Periods
-            const availablePeriods = generatePeriods(12);
-            setPeriods(availablePeriods);
+            // 1. Load Periods (Open Only for Employee, All for Supervisor maybe? Let's defaulting to Open for new)
+            // But if we are viewing old timesheet, we need that period to exist in list? 
+            // Actually, we just need the "Options" to be selectable. 
+            // For now, load Open + Current (if viewing). 
+            // Simplest: Load All for now, or Open. 
+            // If employee, they can only create for Open.
+            const periodsData = await TimeSheetService.getPayPeriods('Open'); 
+            const periodsList = periodsData.map((p: any) => ({
+                key: p.id, // Using ID as key
+                label: p.name,
+                start: p.start_date,
+                end: p.end_date
+            }));
+            
+            setPeriods(periodsList);
 
             // 2. Load Settings
             const settingsEmail = userEmail || currentUserEmail;
@@ -139,7 +151,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     setCompTimeEntries(data.compTime);
                     setAdditionalInfo(data.header.additional_info || '');
 
-                    const match = availablePeriods.find(p => p.start === data.header.period_start);
+                    const match = periodsList.find((p: any) => p.start === data.header.period_start);
                     if (match) {
                         setSelectedPeriodKey(match.key);
                     } else {
@@ -148,10 +160,14 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 }
             } else {
                 // DEFAULT LOAD (Current Period)
-                const current = availablePeriods[0];
-                setSelectedPeriodKey(current.key);
-                // Important: loadTimeSheet handles the null case (new timesheet)
-                await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end);
+                // Default to the first open period?
+                if (periodsList.length > 0) {
+                     const current = periodsList[0];
+                     setSelectedPeriodKey(current.key);
+                     await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end);
+                } else {
+                    toast.warning("No Open Pay Periods Found. Please contact HR.");
+                }
             }
 
         } catch (e) {
@@ -312,35 +328,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     // show signatures only if NOT Draft (i.e. Submitted, Approved, Rejected)
     const showSignatures = header?.status && header.status !== 'Draft';
 
-    const generatePeriods = (count: number) => {
-        const list = [];
-        let date = new Date();
-        // Adjust to start of current
-        date.setDate(date.getDate() > 15 ? 16 : 1);
-
-        for (let i = 0; i < count; i++) {
-            const y = date.getFullYear();
-            const m = date.getMonth();
-            const d = date.getDate();
-
-            let start = '', end = '', label = '';
-            const monthName = date.toLocaleString('default', { month: 'long' });
-
-            if (d <= 15) {
-                start = new Date(y, m, 1).toLocaleDateString('en-CA');
-                end = new Date(y, m, 15).toLocaleDateString('en-CA');
-                label = `${monthName} 1 - 15, ${y}`;
-                date = new Date(y, m - 1, 16); // Move back
-            } else {
-                start = new Date(y, m, 16).toLocaleDateString('en-CA');
-                end = new Date(y, m + 1, 0).toLocaleDateString('en-CA');
-                label = `${monthName} 16 - End, ${y}`;
-                date = new Date(y, m, 1);
-            }
-            list.push({ key: start, label, start, end });
-        }
-        return list;
-    };
+    // Removed generatePeriods logic (now fetched from API)
 
     const generateEmptyLogs = (startStr: string, endStr: string) => {
         const logs: any[] = [];
@@ -472,7 +460,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     employee_signed_by: status === 'Submitted' ? user : '',
                     employee_signed_date: status === 'Submitted' ? new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16) : '',
                     supervisor_signed_by: '',
-                    supervisor_signed_date: ''
+                    supervisor_signed_date: '',
+                    pay_period_id: p?.key || undefined // Pass the ID
                 };
             }
 
@@ -847,6 +836,26 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 <div>
                     <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || (isSupervisorView ? (userEmail || 'Loading...') : currentUserName)}</span></div>
                     <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                     <span className="text-sm font-medium">Pay Period:</span>
+                     <Select value={selectedPeriodKey} onValueChange={async (val) => {
+                        setSelectedPeriodKey(val);
+                        const p = periods.find(x => x.key === val);
+                        if(p) await loadTimeSheet(userEmail || currentUserEmail, p.start, p.end);
+                     }}>
+                        <SelectTrigger className="w-[250px]">
+                            <SelectValue placeholder="Select Period" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {periods.map((p) => (
+                                <SelectItem key={p.key} value={p.key}>
+                                    {p.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                     </Select>
                 </div>
             </div>
 
