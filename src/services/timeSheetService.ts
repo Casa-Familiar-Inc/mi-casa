@@ -179,6 +179,17 @@ export const TimeSheetService = {
         }
     },
 
+    async getAllTimeSheets(start: string, end: string): Promise<HR_TimeSheetHeader[]> {
+        try {
+            const response = await fetch(`${API_BASE}/timesheets?period_start_gte=${start}&period_start_lte=${end}&_sort=employee_name`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching all timesheets:", error);
+            return [];
+        }
+    },
+
     async getUserSettings(email: string): Promise<HR_EmployeeSettings | null> {
         try {
             const response = await fetch(`${API_BASE}/employees/settings?user_email=${email}`, { credentials: 'include' });

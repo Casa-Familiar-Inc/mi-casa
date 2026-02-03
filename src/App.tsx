@@ -43,6 +43,7 @@ import { UserList } from "./modules/admin/users/list";
 import { HolidayList } from "./modules/hr/holidays/list";
 import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
 import { DepartmentsList } from "./modules/admin/departments";
+import { HRAuditDashboard } from "./modules/hr/audit/HRAuditDashboard";
 
 import { useState, useEffect, useMemo } from "react";
 import { authClient } from "./lib/auth";
@@ -211,6 +212,15 @@ function App() {
         parent: "HR",
         icon: <Calendar className="h-4 w-4" />
       }
+    },
+    {
+      name: "HRAudit",
+      list: "/hr/audit",
+      meta: {
+        label: "Audit & Reports",
+        parent: "HR",
+        icon: <ShieldAlert className="h-4 w-4" />
+      }
     }
   ];
 
@@ -305,6 +315,7 @@ function App() {
                     <Route path="approvals" element={<TimeOffApprovals />} />
                   </Route>
                   <Route path="/hr/holidays" element={<HolidayList />} />
+                  <Route path="/hr/audit" element={<HRAuditDashboard />} />
 
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                   <Route path="/admin/users" element={<UserList />} />

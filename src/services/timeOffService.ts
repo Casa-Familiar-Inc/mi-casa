@@ -119,6 +119,17 @@ export const TimeOffService = {
         }
     },
 
+    async getAllRequestsByPeriod(start: string, end: string): Promise<HR_TimeOffRequest[]> {
+        try {
+            const response = await fetch(`${API_URL}?start_date_lte=${end}&end_date_gte=${start}&_sort=employee_name`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching all time off requests by period:", error);
+            return [];
+        }
+    },
+
     async deleteRequest(id: string): Promise<boolean> {
         try {
             const response = await fetch(`${API_URL}/${id}`, {
