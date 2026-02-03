@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useGetIdentity, useGo } from '@refinedev/core';
 import { TimeOffService } from '../../../services/timeOffService';
 import { HR_TimeOffRequest } from '../../../types/timeoff';
@@ -12,8 +12,9 @@ import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle } from 'lucide-react';
+import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle, ShieldAlert, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useAuthStore } from '../../../stores/authStore';
 
 interface TimeOffContainerProps {
     requestId?: string;
@@ -37,6 +38,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         departmentId?: string; 
     }>();
 
+    const { directReports, userRole } = useAuthStore();
     const go = useGo();
     const [isLoading, setIsLoading] = useState(false);
     const [formData, setFormData] = useState<Partial<HR_TimeOffRequest>>({
@@ -56,9 +58,28 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
     const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
 
-    const isOwner = !formData.employee_email || (identity?.email && formData.employee_email && identity.email.toLowerCase() === formData.employee_email.toLowerCase());
-    const canEdit = !requestId || (isOwner && (formData.status === 'Draft' || formData.status === 'Rejected'));
-    const isSupervisorViewing = !!(requestId && !isOwner);
+    const isOwner = useMemo(() => {
+        const owner = !formData.employee_email || (identity?.email && formData.employee_email && identity.email.toLowerCase() === formData.employee_email.toLowerCase());
+        console.log("[TimeOff] isOwner Check:", {
+            identityEmail: identity?.email,
+            formEmail: formData.employee_email,
+            isOwner: !!owner,
+            status: formData.status
+        });
+        return !!owner;
+    }, [identity?.email, formData.employee_email, formData.status]);
+
+    const isAuthorizedSupervisor = useMemo(() => {
+        if (!requestId || isOwner) return false;
+        if (userRole === 'admin' || userRole === 'hr') return true;
+        return (directReports || []).some((reportEmail: string) => reportEmail.toLowerCase() === (formData.employee_email || '').toLowerCase());
+    }, [requestId, isOwner, userRole, directReports, formData.employee_email]);
+
+    const canEdit = !requestId || (!!isOwner && formData.status === 'Draft');
+    const isSupervisorViewing = !!(requestId && isAuthorizedSupervisor);
+
+    // Access check: If it's an existing request and you are neither owner nor authorized supervisor
+    const isUnauthorized = !!(requestId && !isOwner && !isAuthorizedSupervisor && formData.employee_email);
 
     useEffect(() => {
         if (requestId) {
@@ -343,8 +364,74 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         }
     };
 
+    if (isUnauthorized && !isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center p-12 bg-muted/30 rounded-xl border border-dashed text-center">
+                <ShieldAlert className="h-12 w-12 text-destructive mb-4" />
+                <h3 className="text-lg font-bold">Unauthorized Access</h3>
+                <p className="text-sm text-muted-foreground max-w-md mt-2">
+                    You do not have permission to view or manage this time off request.
+                    Only the requester or their direct supervisor can access this information.
+                </p>
+                <Button variant="outline" className="mt-6" onClick={() => go({ to: '/hr/time-off' })}>
+                    Return to List
+                </Button>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 max-w-4xl mx-auto">
+            {['Pending', 'Rejected', 'Withdrawn', 'Cancelled'].includes(formData.status || '') && isOwner && (
+                <Alert className="bg-amber-50 border-amber-200">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800 flex items-center justify-between w-full">
+                        <div className="flex flex-col gap-1">
+                            <span className="font-medium">
+                                {formData.status === 'Pending' 
+                                    ? "This request is pending approval. You can move it back to draft if you need to make changes."
+                                    : `This request is currently ${formData.status}. To modify it, please move it back to draft status.`
+                                }
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="destructive"
+                                size="sm"
+                                className="font-bold flex items-center gap-1"
+                                onClick={async () => {
+                                    if (window.confirm("Are you sure you want to delete this request permanently?")) {
+                                        setIsLoading(true);
+                                        try {
+                                            await TimeOffService.deleteRequest(requestId!);
+                                            toast.success("Request deleted successfully");
+                                            go({ to: '/hr/time-off' });
+                                        } catch (e) {
+                                            console.error("Delete Error:", e);
+                                            toast.error("Failed to delete request");
+                                        } finally {
+                                            setIsLoading(false);
+                                        }
+                                    }
+                                }}
+                                disabled={isLoading}
+                            >
+                                <Trash2 className="h-3 w-3" /> Delete
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="border-amber-300 hover:bg-amber-100 font-bold"
+                                onClick={() => handleSave('Draft')} 
+                                disabled={isLoading}
+                            >
+                                Move to Draft
+                            </Button>
+                        </div>
+                    </AlertDescription>
+                </Alert>
+            )}
+
             {isSupervisorViewing && formData.status === 'Pending' && (
                 <div className="flex justify-end gap-4 p-4 bg-muted/50 rounded-lg border border-dashed">
                     <Button
@@ -373,15 +460,15 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
-                        <Input value={formData.employee_name} readOnly className="bg-muted" />
+                        <Input value={formData.employee_name || ''} readOnly className="bg-muted" />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
-                        <Input value={formData.department} readOnly className="bg-muted" />
+                        <Input value={formData.department || ''} readOnly className="bg-muted" />
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
-                        <Input type="date" value={formData.today_date} readOnly className="bg-muted" />
+                        <Input type="date" value={formData.today_date ? formData.today_date.split('T')[0] : ''} readOnly className="bg-muted" />
                     </div>
                 </CardContent>
             </Card>
@@ -421,13 +508,13 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
-                                    <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
+                                    <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
                                     <Input
                                         type="date"
-                                        value={formData.end_date}
+                                        value={formData.end_date ? formData.end_date.split('T')[0] : ''}
                                         min={formData.start_date}
                                         onChange={(e) => handleDateChange('end_date', e.target.value)}
                                         disabled={!canEdit}
@@ -437,13 +524,13 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                         ) : (
                             <div className="space-y-1.5">
                                 <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
-                                <Input type="date" value={formData.start_date} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
+                                <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
                             </div>
                         )}
 
                         <div className="space-y-1.5">
                             <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
-                            <Input type="date" value={formData.return_date} onChange={(e) => handleChange('return_date', e.target.value)} disabled={!canEdit} />
+                            <Input type="date" value={formData.return_date ? formData.return_date.split('T')[0] : ''} onChange={(e) => handleChange('return_date', e.target.value)} disabled={!canEdit} />
                         </div>
 
                         <Separator />
@@ -501,12 +588,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
                     <div className="space-y-2">
                         <Label>REASON:</Label>
-                        <Input value={formData.reason} onChange={(e) => handleChange('reason', e.target.value)} disabled={!canEdit} />
+                        <Input value={formData.reason || ''} onChange={(e) => handleChange('reason', e.target.value)} disabled={!canEdit} />
                     </div>
 
                     <div className="space-y-2">
                         <Label>COMMENTS:</Label>
-                        <Textarea value={formData.comments} onChange={(e) => handleChange('comments', e.target.value)} disabled={!canEdit} />
+                        <Textarea value={formData.comments || ''} onChange={(e) => handleChange('comments', e.target.value)} disabled={!canEdit} />
                     </div>
                 </CardContent>
             </Card>
@@ -524,7 +611,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                         </div>
                         <div className="space-y-2">
                             <Label>Date:</Label>
-                            <Input type="date" value={formData.employee_signature_date || new Date().toISOString().split('T')[0]} readOnly className="bg-muted" />
+                            <Input 
+                                type="date" 
+                                value={formData.employee_signature_date ? formData.employee_signature_date.split('T')[0] : new Date().toISOString().split('T')[0]} 
+                                readOnly 
+                                className="bg-muted" 
+                            />
                         </div>
                     </div>
                 </CardContent>
@@ -552,7 +644,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                             </div>
                             <div className="space-y-2">
                                 <Label>Date:</Label>
-                                <Input type="date" value={formData.supervisor_approval_date || ''} readOnly className="bg-muted" />
+                                <Input 
+                                    type="date" 
+                                    value={formData.supervisor_approval_date ? formData.supervisor_approval_date.split('T')[0] : ''} 
+                                    readOnly 
+                                    className="bg-muted" 
+                                />
                             </div>
                         </div>
                     </CardContent>

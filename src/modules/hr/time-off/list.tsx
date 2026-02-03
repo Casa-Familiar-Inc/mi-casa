@@ -137,7 +137,7 @@ export const TimeOffList = () => {
                                                         <Eye className="h-4 w-4 mr-1" /> View
                                                     </Button>
                                                 </CanAccess>
-                                                {(r.status === 'Draft' || r.status === 'Pending') && (
+                                                {r.status !== 'Approved' && (
                                                     <CanAccess resource="TimeOff" action="delete">
                                                         <Button
                                                             variant="ghost"

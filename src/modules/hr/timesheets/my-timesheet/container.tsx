@@ -128,7 +128,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                         enrichedLogs = applyTimeOffToLogs(data.logs, approvedTimeOff);
                     } else {
                         // If header exists but logs don't (newly created), generate them
-                        const emptyLogs = generateEmptyLogs(data.header.period_start, data.header.period_end, settings || undefined);
+                        const emptyLogs = generateEmptyLogs(data.header.period_start, data.header.period_end);
                         enrichedLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
                     }
 
@@ -151,7 +151,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 const current = availablePeriods[0];
                 setSelectedPeriodKey(current.key);
                 // Important: loadTimeSheet handles the null case (new timesheet)
-                await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end, settings || undefined);
+                await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end);
             }
 
         } catch (e) {
@@ -166,12 +166,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         setSelectedPeriodKey(key);
         const p = periods.find(x => x.key === key);
         if (p) {
-            await loadTimeSheet(userEmail || currentUserEmail, p.start, p.end, userSettings || undefined);
+            await loadTimeSheet(userEmail || currentUserEmail, p.start, p.end);
         }
         setIsLoading(false);
     };
 
-    const loadTimeSheet = async (email: string, start: string, end: string, settings?: HR_EmployeeSettings) => {
+    const loadTimeSheet = async (email: string, start: string, end: string) => {
         const data = await TimeSheetService.getTimeSheet(email, start);
         const approvedTimeOff = await TimeOffService.getApprovedRequestsByPeriod(email, start, end);
         const companyHolidays = await HolidayService.getHolidaysByRange(start, end);
@@ -186,7 +186,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         } else {
             setHeader(null);
             setCompTimeEntries([{ id: '', header: '', date: '', rationale: '' }]); // Start with 1 empty
-            const emptyLogs = generateEmptyLogs(start, end, settings);
+            const emptyLogs = generateEmptyLogs(start, end);
             finalLogs = applyTimeOffToLogs(emptyLogs, approvedTimeOff);
             setAdditionalInfo('');
         }
@@ -342,7 +342,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         return list;
     };
 
-    const generateEmptyLogs = (startStr: string, endStr: string, settings?: HR_EmployeeSettings) => {
+    const generateEmptyLogs = (startStr: string, endStr: string) => {
         const logs: any[] = [];
         const start = new Date(startStr + 'T00:00:00'); // Ensure local time parsing
         const end = new Date(endStr + 'T00:00:00');
@@ -570,7 +570,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 setAdditionalInfo(reloaded.header.additional_info || '');
             } else {
                 // Fallback if ID load fails (rare)
-                if (p) await loadTimeSheet(headerData.employee_email, p.start, p.end, userSettings || undefined);
+                if (p) await loadTimeSheet(headerData.employee_email, p.start, p.end);
             }
 
         } catch (e) {
