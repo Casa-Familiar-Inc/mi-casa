@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useGetIdentity, useGo } from '@refinedev/core';
 import { TimeOffService } from '../../../services/timeOffService';
 import { HR_TimeOffRequest } from '../../../types/timeoff';
+import { TimeUtils } from '../../../utils/TimeUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +15,24 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle, ShieldAlert, Trash2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuthStore } from '../../../stores/authStore';
 
 interface TimeOffContainerProps {
@@ -57,6 +76,12 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     });
     const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
     const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
+    
+    // Dialog States
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+    const [isStatusUpdateDialogOpen, setIsStatusUpdateDialogOpen] = useState(false);
+    const [pendingStatusUpdate, setPendingStatusUpdate] = useState<'Approved' | 'Rejected' | null>(null);
+    const [statusComments, setStatusComments] = useState('');
 
     const isOwner = useMemo(() => {
         const owner = !formData.employee_email || (identity?.email && formData.employee_email && identity.email.toLowerCase() === formData.employee_email.toLowerCase());
@@ -345,22 +370,44 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
         }
     };
 
-    const handleStatusUpdate = async (newStatus: 'Approved' | 'Rejected') => {
+    const executeDelete = async () => {
         if (!requestId) return;
-
-        const comments = prompt(`Enter comments for ${newStatus.toLowerCase()} (optional):`);
-        if (comments === null) return; // Cancelled prompt
-
+        setIsDeleteDialogOpen(false);
         setIsLoading(true);
         try {
-            await TimeOffService.updateStatus(requestId, newStatus, comments || undefined);
-            toast.success(`Request ${newStatus.toLowerCase()} successfully`);
+            await TimeOffService.deleteRequest(requestId);
+            toast.success("Request deleted successfully");
+            go({ to: '/hr/time-off' });
+        } catch (e) {
+            console.error("Delete Error:", e);
+            toast.error("Failed to delete request");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleStatusUpdate = (newStatus: 'Approved' | 'Rejected') => {
+        setPendingStatusUpdate(newStatus);
+        setStatusComments('');
+        setIsStatusUpdateDialogOpen(true);
+    };
+
+    const executeStatusUpdate = async () => {
+        if (!requestId || !pendingStatusUpdate) return;
+
+        setIsStatusUpdateDialogOpen(false);
+        setIsLoading(true);
+        try {
+            await TimeOffService.updateStatus(requestId, pendingStatusUpdate, statusComments || undefined);
+            toast.success(`Request ${pendingStatusUpdate.toLowerCase()} successfully`);
             go({ to: `/hr/time-off/approvals` });
         } catch (error) {
             console.error("Update Status Error:", error);
             toast.error("Failed to update status");
         } finally {
             setIsLoading(false);
+            setPendingStatusUpdate(null);
+            setStatusComments('');
         }
     };
 
@@ -381,6 +428,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     }
 
     return (
+        <>
         <div className="space-y-6 max-w-4xl mx-auto">
             {['Pending', 'Rejected', 'Withdrawn', 'Cancelled'].includes(formData.status || '') && isOwner && (
                 <Alert className="bg-amber-50 border-amber-200">
@@ -399,21 +447,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                                 variant="destructive"
                                 size="sm"
                                 className="font-bold flex items-center gap-1"
-                                onClick={async () => {
-                                    if (window.confirm("Are you sure you want to delete this request permanently?")) {
-                                        setIsLoading(true);
-                                        try {
-                                            await TimeOffService.deleteRequest(requestId!);
-                                            toast.success("Request deleted successfully");
-                                            go({ to: '/hr/time-off' });
-                                        } catch (e) {
-                                            console.error("Delete Error:", e);
-                                            toast.error("Failed to delete request");
-                                        } finally {
-                                            setIsLoading(false);
-                                        }
-                                    }
-                                }}
+                                onClick={() => setIsDeleteDialogOpen(true)}
                                 disabled={isLoading}
                             >
                                 <Trash2 className="h-3 w-3" /> Delete
@@ -612,8 +646,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                         <div className="space-y-2">
                             <Label>Date:</Label>
                             <Input 
-                                type="date" 
-                                value={formData.employee_signature_date ? formData.employee_signature_date.split('T')[0] : new Date().toISOString().split('T')[0]} 
+                                value={TimeUtils.formatDisplayDateTime(formData.employee_signature_date)} 
                                 readOnly 
                                 className="bg-muted" 
                             />
@@ -645,8 +678,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                             <div className="space-y-2">
                                 <Label>Date:</Label>
                                 <Input 
-                                    type="date" 
-                                    value={formData.supervisor_approval_date ? formData.supervisor_approval_date.split('T')[0] : ''} 
+                                    value={TimeUtils.formatDisplayDateTime(formData.supervisor_approval_date)} 
                                     readOnly 
                                     className="bg-muted" 
                                 />
@@ -664,5 +696,70 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
             )}
 
         </div>
+
+        {/* DELETE CONFIRMATION DIALOG */}
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Request Permanently?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently remove the time off request from the system.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            executeDelete();
+                        }}
+                        className="bg-red-600 hover:bg-red-700"
+                        disabled={isLoading}
+                    >
+                        {isLoading ? "Deleting..." : "Delete Permanently"}
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
+        {/* STATUS UPDATE DIALOG (APPROVE/REJECT) */}
+        <Dialog open={isStatusUpdateDialogOpen} onOpenChange={setIsStatusUpdateDialogOpen}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle className="uppercase tracking-tight">
+                        {pendingStatusUpdate === 'Approved' ? 'Approve Request' : 'Reject Request'}
+                    </DialogTitle>
+                    <DialogDescription>
+                        {pendingStatusUpdate === 'Approved' 
+                            ? "Are you sure you want to approve this request? You can add optional comments below."
+                            : "Please provide a reason or additional comments for rejecting this request."
+                        }
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                    <Label htmlFor="comments" className="text-[10px] font-bold uppercase mb-2 block">Comments (Optional)</Label>
+                    <Textarea 
+                        id="comments"
+                        placeholder="Enter any relevant information here..."
+                        value={statusComments}
+                        onChange={(e) => setStatusComments(e.target.value)}
+                        className="min-h-[100px]"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsStatusUpdateDialogOpen(false)} disabled={isLoading}>
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={executeStatusUpdate}
+                        disabled={isLoading}
+                        className={pendingStatusUpdate === 'Approved' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
+                    >
+                        {isLoading ? 'Processing...' : (pendingStatusUpdate === 'Approved' ? 'Confirm Approval' : 'Confirm Rejection')}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        </>
     );
 };

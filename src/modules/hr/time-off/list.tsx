@@ -31,6 +31,7 @@ export const TimeOffList = () => {
     const go = useGo();
     const [requests, setRequests] = useState<HR_TimeOffRequest[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [confirmAction, setConfirmAction] = useState<{ id: string, type: 'delete' | 'withdraw' } | null>(null);
 
     useEffect(() => {
         if (identity?.email) {
@@ -143,7 +144,7 @@ export const TimeOffList = () => {
                                                             variant="ghost"
                                                             size="sm"
                                                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                            onClick={() => handleDelete(r.id)}
+                                                            onClick={() => setConfirmAction({ id: r.id, type: 'delete' })}
                                                         >
                                                             <Trash2 className="h-4 w-4 mr-1" /> Delete
                                                         </Button>
@@ -155,7 +156,7 @@ export const TimeOffList = () => {
                                                             variant="ghost"
                                                             size="sm"
                                                             className="text-amber-600 hover:text-amber-800 hover:bg-amber-50"
-                                                            onClick={() => handleWithdraw(r.id)}
+                                                            onClick={() => setConfirmAction({ id: r.id, type: 'withdraw' })}
                                                         >
                                                             <RotateCcw className="h-4 w-4 mr-1" /> Retract
                                                         </Button>
@@ -170,6 +171,31 @@ export const TimeOffList = () => {
                     )}
                 </CardContent>
             </Card>
+
+            <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>
+                            {confirmAction?.type === 'delete' ? "Delete Request?" : "Retract Request?"}
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {confirmAction?.type === 'delete' 
+                                ? "Are you sure you want to delete this request permanently? This action cannot be undone."
+                                : "Are you sure you want to retract/withdraw this request from approval?"
+                            }
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                            onClick={executeAction}
+                            className={confirmAction?.type === 'delete' ? "bg-red-600 hover:bg-red-700" : ""}
+                        >
+                            Confirm
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             </div>
         </CanAccess>
     );

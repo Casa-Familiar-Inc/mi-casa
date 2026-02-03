@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HR_TimeSheetHeader, HR_TimeSheetLog } from '../types/timesheet';
+import { TimeUtils } from './TimeUtils';
 
 export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSheetLog[]) => {
     const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
@@ -159,7 +160,7 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
     doc.text("HOURS THIS PERIOD", 34, boxY + 5, { align: 'center' });
 
     doc.setFontSize(16);
-    doc.text(Number(header.total_hours).toFixed(0), 34, boxY + 15, { align: 'center' });
+    doc.text(Number(header.total_hours).toFixed(2), 34, boxY + 15, { align: 'center' });
 
 
     // COMPENSATORY TIME RATIONALE
@@ -193,7 +194,7 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
     doc.text("EMPLOYEE'S SIGNATURE", 55, sigY + 4, { align: 'center' });
     if (header.employee_signed_by) {
         doc.setFontSize(6);
-        doc.text(`Signed: ${header.employee_signed_date}`, 20, sigY + 8);
+        doc.text(`Signed: ${TimeUtils.formatDisplayDateTime(header.employee_signed_date)}`, 20, sigY + 8);
     }
 
     const supY = sigY + 25;
@@ -204,7 +205,7 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
     doc.text("SUPERVISOR'S SIGNATURE", 55, supY + 4, { align: 'center' });
     if (header.supervisor_signed_by) {
         doc.setFontSize(6);
-        doc.text(`Signed: ${header.supervisor_signed_date}`, 20, supY + 8);
+        doc.text(`Signed: ${TimeUtils.formatDisplayDateTime(header.supervisor_signed_date)}`, 20, supY + 8);
     }
 
     doc.save(`TimeSheet_${header.employee_name}.pdf`);

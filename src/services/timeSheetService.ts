@@ -215,7 +215,7 @@ export const TimeSheetService = {
                 body: JSON.stringify({
                     status: 'Approved',
                     supervisor_signed_by: supervisorName,
-                    supervisor_signed_date: new Date().toLocaleString()
+                    supervisor_signed_date: new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16)
                 }),
             });
 

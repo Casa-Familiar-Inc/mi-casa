@@ -450,7 +450,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours, // Update totals
                     additional_info: additionalInfo,
                     employee_signed_by: isEmployeeSigning ? user : header.employee_signed_by,
-                    employee_signed_date: isEmployeeSigning ? new Date().toLocaleString() : header.employee_signed_date,
+                    employee_signed_date: isEmployeeSigning ? new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16) : header.employee_signed_date,
                     // IMPORTANT: Do NOT touch employee_email here. It's already in `header`.
                 };
             } else {
@@ -470,7 +470,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours,
                     additional_info: additionalInfo,
                     employee_signed_by: status === 'Submitted' ? user : '',
-                    employee_signed_date: status === 'Submitted' ? new Date().toLocaleString() : '',
+                    employee_signed_date: status === 'Submitted' ? new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16) : '',
                     supervisor_signed_by: '',
                     supervisor_signed_date: ''
                 };
@@ -735,7 +735,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 id="time_in"
                                 type="time"
                                 onClick={showTimePicker}
-                                value={tempSettings.default_time_in}
+                                value={tempSettings.default_time_in?.slice(0, 5)}
                                 onChange={(e) => setTempSettings({ ...tempSettings, default_time_in: e.target.value })}
                                 className="col-span-3"
                             />
@@ -748,7 +748,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 id="lunch_out"
                                 type="time"
                                 onClick={showTimePicker}
-                                value={tempSettings.default_lunch_out}
+                                value={tempSettings.default_lunch_out?.slice(0, 5)}
                                 onChange={(e) => setTempSettings({ ...tempSettings, default_lunch_out: e.target.value })}
                                 className="col-span-3"
                             />
@@ -761,7 +761,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 id="lunch_in"
                                 type="time"
                                 onClick={showTimePicker}
-                                value={tempSettings.default_lunch_in}
+                                value={tempSettings.default_lunch_in?.slice(0, 5)}
                                 onChange={(e) => setTempSettings({ ...tempSettings, default_lunch_in: e.target.value })}
                                 className="col-span-3"
                             />
@@ -774,7 +774,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 id="time_out"
                                 type="time"
                                 onClick={showTimePicker}
-                                value={tempSettings.default_time_out}
+                                value={tempSettings.default_time_out?.slice(0, 5)}
                                 onChange={(e) => setTempSettings({ ...tempSettings, default_time_out: e.target.value })}
                                 className="col-span-3"
                             />
@@ -853,8 +853,8 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             {/* STATUS BANNER - Show only if not Draft */}
             {showSignatures && (
                 <div className="bg-muted border border-border p-3 text-sm rounded text-muted-foreground">
-                    <div><span className="font-bold">Signed by Employee:</span> {header?.employee_signed_by ? `${header.employee_signed_by} on ${header.employee_signed_date}` : 'Not signed'}</div>
-                    <div><span className="font-bold">Approved by Supervisor:</span> {header?.supervisor_signed_by ? `${header.supervisor_signed_by} on ${header.supervisor_signed_date}` : 'Not approved'}</div>
+                    <div><span className="font-bold">Signed by Employee:</span> {header?.employee_signed_by ? `${header.employee_signed_by} on ${TimeUtils.formatDisplayDateTime(header.employee_signed_date)}` : 'Not signed'}</div>
+                    <div><span className="font-bold">Approved by Supervisor:</span> {header?.supervisor_signed_by ? `${header.supervisor_signed_by} on ${TimeUtils.formatDisplayDateTime(header.supervisor_signed_date)}` : 'Not approved'}</div>
                 </div>
             )}
 
@@ -908,7 +908,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                                     onFocus={showTimePicker}
                                                     readOnly={isReadOnly || isLocked}
                                                     className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
-                                                    value={log.time_in}
+                                                    value={log.time_in?.slice(0, 5)}
                                                     onChange={(e) => handleLogChange(idx, 'time_in', e.target.value)}
                                                 />
                                             </TableCell>
@@ -918,7 +918,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                                     onFocus={showTimePicker}
                                                     readOnly={isReadOnly || isLocked}
                                                     className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
-                                                    value={log.lunch_out}
+                                                    value={log.lunch_out?.slice(0, 5)}
                                                     onChange={(e) => handleLogChange(idx, 'lunch_out', e.target.value)}
                                                 />
                                             </TableCell>
@@ -928,7 +928,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                                     onFocus={showTimePicker}
                                                     readOnly={isReadOnly || isLocked}
                                                     className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
-                                                    value={log.lunch_in}
+                                                    value={log.lunch_in?.slice(0, 5)}
                                                     onChange={(e) => handleLogChange(idx, 'lunch_in', e.target.value)}
                                                 />
                                             </TableCell>
@@ -938,7 +938,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                                     onFocus={showTimePicker}
                                                     readOnly={isReadOnly || isLocked}
                                                     className={`h-7 text-xs text-center ${(isReadOnly || isLocked) ? 'bg-muted opacity-60' : ''}`}
-                                                    value={log.time_out}
+                                                    value={log.time_out?.slice(0, 5)}
                                                     onChange={(e) => handleLogChange(idx, 'time_out', e.target.value)}
                                                 />
                                             </TableCell>

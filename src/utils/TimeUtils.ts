@@ -1,14 +1,15 @@
 export class TimeUtils {
     public static parseTime(t: string): number {
         if (!t) return 0;
-        // Handle "5:00" or "05:00"
         const parts = t.split(':');
-        if (parts.length !== 2) return 0;
 
         const h = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10);
+        if (isNaN(h)) return 0;
 
-        if (isNaN(h) || isNaN(m)) return 0;
+        if (parts.length < 2) return h; // Handle just hour
+
+        const m = parseInt(parts[1], 10);
+        if (isNaN(m)) return h;
 
         return h + m / 60;
     }
@@ -34,5 +35,24 @@ export class TimeUtils {
             }
         }
         return Math.max(0, duration).toFixed(2);
+    }
+    public static formatDisplayDateTime(d: string | undefined): string {
+        if (!d) return '';
+        try {
+            const date = new Date(d);
+            if (isNaN(date.getTime())) return d;
+
+            // Format to "MMM dd, yyyy HH:mm"
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: true
+            });
+        } catch (e) {
+            return d;
+        }
     }
 }
