@@ -207,7 +207,9 @@ export const generateBulkTimesheetPDF = (timesheets: TimeSheetFull[], periodStar
 };
 
 export const generateBulkTimeOffPDF = (requests: HR_TimeOffRequest[]) => {
-    const doc = new jsPDF();
+    const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.width;
+
     const approvedReqs = requests.filter(r => r.status === 'Approved');
 
     if (approvedReqs.length === 0) {
@@ -219,13 +221,102 @@ export const generateBulkTimeOffPDF = (requests: HR_TimeOffRequest[]) => {
     approvedReqs.forEach((req, index) => {
         if (index > 0) doc.addPage();
 
-        doc.setFontSize(18);
-        doc.text("Casa Familiar - Time Off Request", 14, 20);
-        // Basic placeholder for now, matching previous logic
+        // --- HEADER ---
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("CASA FAMILIAR", pageWidth / 2, 15, { align: 'center' });
         doc.setFontSize(12);
-        doc.text(JSON.stringify(req, null, 2), 14, 30);
+        doc.text("TIME-OFF REQUEST FORM", pageWidth / 2, 22, { align: 'center' });
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Request ID: ${req.id}`, 14, 30);
+        doc.text(`Date of Request: ${formatDate(req.created_at)}`, 14, 35);
+        doc.text(`Status: ${req.status}`, pageWidth - 14, 30, { align: 'right' });
+
+        doc.setDrawColor(200);
+        doc.line(14, 38, pageWidth - 14, 38);
+
+        // --- EMPLOYEE INFO ---
+        let currentY = 45;
+        autoTable(doc, {
+            startY: currentY,
+            head: [[{ content: 'EMPLOYEE INFORMATION', colSpan: 2, styles: { halign: 'center', fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' } }]],
+            body: [
+                ['Employee Name:', req.employee_name],
+                ['Email:', req.employee_email],
+                ['Department/Program:', req.department || 'N/A'],
+            ],
+            theme: 'grid',
+            styles: { fontSize: 10, cellPadding: 2 },
+            columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 } }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 10;
+
+        // --- REQUEST DETAILS ---
+        autoTable(doc, {
+            startY: currentY,
+            head: [[{ content: 'REQUEST DETAILS', colSpan: 4, styles: { halign: 'center', fillColor: [220, 220, 220], textColor: 0, fontStyle: 'bold' } }]],
+            body: [
+                ['Request Type', req.request_type, 'Number of Days', req.num_days_requested.toString()],
+                ['Start Date', formatDate(req.start_date), 'End Date', formatDate(req.end_date)],
+                ['Return Date', formatDate(req.return_date), 'Total Hours', req.total_hours_requested.toString()],
+                [{ content: 'Reason / Explanation:', colSpan: 1, styles: { fontStyle: 'bold' } }, { content: req.reason || 'N/A', colSpan: 3 }],
+                [{ content: 'Comments:', colSpan: 1, styles: { fontStyle: 'bold' } }, { content: req.comments || 'N/A', colSpan: 3 }],
+            ],
+            theme: 'grid',
+            styles: { fontSize: 10, cellPadding: 2 },
+            columnStyles: {
+                0: { fontStyle: 'bold', cellWidth: 40 },
+                2: { fontStyle: 'bold', cellWidth: 40 }
+            }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 15;
+
+        // --- SIGNATURES ---
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("CERTIFICATION & APPROVALS", 14, currentY);
+        doc.setDrawColor(0);
+        doc.line(14, currentY + 2, pageWidth - 14, currentY + 2);
+
+        currentY += 10;
+
+        // Employee Signature
+        doc.setFont("helvetica", "normal");
+        doc.text(`Employee Signature: ${req.employee_signature || '(Not Signed)'}`, 14, currentY + 10);
+        if (req.employee_signature_date) {
+            doc.text(`Date: ${TimeUtils.formatDisplayDateTime(req.employee_signature_date)}`, 120, currentY + 10);
+        } else {
+            doc.text("Date: _______________", 120, currentY + 10);
+        }
+        doc.line(14, currentY + 12, 110, currentY + 12); // Underline name
+
+        currentY += 20;
+
+        // Supervisor Signature
+        doc.text(`Supervisor Approval: ${req.supervisor_approval_by || '(Pending)'}`, 14, currentY + 10);
+        if (req.supervisor_approval_date) {
+            doc.text(`Date: ${TimeUtils.formatDisplayDateTime(req.supervisor_approval_date)}`, 120, currentY + 10);
+        } else {
+            doc.text("Date: _______________", 120, currentY + 10);
+        }
+        doc.line(14, currentY + 12, 110, currentY + 12); // Underline name
+
+        // HR Section (Optional but good for completeness)
+        if (req.hr_approval_by) {
+            currentY += 20;
+            doc.text(`HR Administrative Approval: ${req.hr_approval_by}`, 14, currentY + 10);
+            doc.text(`Date: ${TimeUtils.formatDisplayDateTime(req.hr_approval_date)}`, 120, currentY + 10);
+            doc.line(14, currentY + 12, 110, currentY + 12);
+        }
+
+        // Footer
+        doc.setFontSize(8);
+        doc.text(`Generated on ${new Date().toLocaleDateString()}`, pageWidth / 2, 270, { align: 'center' });
     });
 
-    doc.save("TimeOff_Bulk.pdf");
+    doc.save("TimeOff_Requests_Bulk.pdf");
 };
-

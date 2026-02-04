@@ -74,7 +74,7 @@ export const TimeOffService = {
 
     async getMyRequests(email: string): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}?employee_email=${email}&_sort=-created`, { credentials: 'include' });
+            const response = await fetch(`${API_URL}?employee_email=${email}&_sort=-created_at`, { credentials: 'include' });
             if (!response.ok) return [];
             return await response.json();
         } catch (error) {

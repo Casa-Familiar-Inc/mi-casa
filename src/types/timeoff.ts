@@ -1,7 +1,7 @@
 export interface HR_TimeOffRequest {
     id: string;
-    created: string;
-    updated: string;
+    created_at: string;
+    updated_at: string;
     collectionId: string;
     collectionName: string;
 
