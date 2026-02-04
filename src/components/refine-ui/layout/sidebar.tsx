@@ -57,7 +57,7 @@ const GROUP_CONFIG = [
     // },
     {
         label: "Human Resources",
-        resources: ["TimeOff", "TimeOffApprovals", "CompanyCalendar", "TimeSheets", "Supervisor", "HRAudit"],
+        resources: ["TimeOff", "CompanyCalendar", "TimeSheets", "Supervisor", "HRAudit"],
     },
     // {
     //      label: "Supervisor",

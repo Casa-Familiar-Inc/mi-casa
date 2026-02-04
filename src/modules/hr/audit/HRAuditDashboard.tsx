@@ -48,6 +48,7 @@ import {
     AlertCircle
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
+import { TimeUtils } from "../../../utils/TimeUtils"; // Import TimeUtils
 import { TimeSheetService } from "../../../services/timeSheetService";
 import { TimeOffService } from "../../../services/timeOffService";
 import { generateBulkTimesheetPDF, generateBulkTimeOffPDF } from "../../../utils/PDFUtils";
@@ -104,8 +105,8 @@ export const HRAuditDashboard = () => {
             setLoadingTimesheets(true);
             try {
                 // Sync Time Off Dates too
-                setTimeOffStart(new Date(currentPeriod.start_date + 'T00:00:00'));
-                setTimeOffEnd(new Date(currentPeriod.end_date + 'T00:00:00'));
+                setTimeOffStart(new Date(currentPeriod.start_date.replace(/-/g, '/') + ' 00:00:00')); // Use slashed date for safe local parsing or just keep standard string
+                setTimeOffEnd(new Date(currentPeriod.end_date.replace(/-/g, '/') + ' 00:00:00'));
 
                 const data = await TimeSheetService.getAllTimeSheets(currentPeriod.start_date, currentPeriod.end_date);
                 setTimesheets(data);
@@ -405,7 +406,7 @@ export const HRAuditDashboard = () => {
                                         <TableRow key={ts.id}>
                                             <TableCell className="font-medium">{ts.employee_name}</TableCell>
                                             <TableCell>{ts.employee_email}</TableCell>
-                                            <TableCell>{format(new Date(ts.period_start), 'MM/dd')} - {format(new Date(ts.period_end), 'MM/dd')}</TableCell>
+                                            <TableCell>{TimeUtils.formatDisplayDate(ts.period_start)} - {TimeUtils.formatDisplayDate(ts.period_end)}</TableCell>
                                             <TableCell>
                                                 <span className={cn(
                                                     "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
@@ -494,7 +495,7 @@ export const HRAuditDashboard = () => {
                                             <TableCell className="font-mono text-xs text-muted-foreground">{req.id.slice(0, 8)}...</TableCell>
                                             <TableCell className="font-medium">{req.employee_name}</TableCell>
                                             <TableCell>{req.request_type}</TableCell>
-                                            <TableCell>{format(new Date(req.start_date), 'MM/dd')} - {format(new Date(req.end_date), 'MM/dd')}</TableCell>
+                                            <TableCell>{TimeUtils.formatDisplayDate(req.start_date)} - {TimeUtils.formatDisplayDate(req.end_date)}</TableCell>
                                             <TableCell>
                                                 <span className={cn(
                                                     "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",

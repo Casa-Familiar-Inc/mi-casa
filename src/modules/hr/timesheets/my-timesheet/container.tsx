@@ -970,7 +970,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                             className={`${isTimeOffLocked ? "bg-amber-50/50" : ""} ${isCompanyLocked ? "bg-blue-100/40 border-l-4 border-l-blue-500" : ""}`}
                                         >
                                             <TableCell className="p-2 text-muted-foreground flex items-center gap-1">
-                                                {log.date}
+                                                {TimeUtils.formatDisplayDate(log.date)}
                                                 {isCompanyLocked && (
                                                     <TooltipProvider>
                                                         <Tooltip>

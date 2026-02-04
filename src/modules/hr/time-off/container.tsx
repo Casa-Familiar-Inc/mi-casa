@@ -431,6 +431,34 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     return (
         <>
             <div className="space-y-6 max-w-4xl mx-auto">
+                {/* REJECTION ALERT */}
+                {formData.status === 'Rejected' && formData.approval_comments && (
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-md flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                        <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                        <div>
+                            <h4 className="font-semibold text-red-800">Request Rejected</h4>
+                            <p className="text-sm text-red-700 mt-1">
+                                Reason: <span className="italic">"{formData.approval_comments}"</span>
+                            </p>
+                            <p className="text-xs text-red-600 mt-2">Please review the reason above. You may create a new request if needed.</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* APPROVAL WITH COMMENTS ALERT */}
+                {formData.status === 'Approved' && formData.approval_comments && (
+                    <div className="bg-green-50 border border-green-200 p-4 rounded-md flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                        <div className="mt-0.5 bg-green-100 p-1 rounded-full">
+                            <CalendarIcon className="w-3 h-3 text-green-700" />
+                        </div>
+                        <div>
+                            <h4 className="font-semibold text-green-800">Request Approved</h4>
+                            <p className="text-sm text-green-700 mt-1">
+                                Note from Supervisor: <span className="italic">"{formData.approval_comments}"</span>
+                            </p>
+                        </div>
+                    </div>
+                )}
                 {['Pending', 'Rejected', 'Withdrawn', 'Cancelled'].includes(formData.status || '') && isOwner && (
                     <Alert className="bg-amber-50 border-amber-200">
                         <AlertCircle className="h-4 w-4 text-amber-600" />

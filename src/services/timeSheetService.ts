@@ -142,36 +142,40 @@ export const TimeSheetService = {
         }
     },
 
-    async getSubmittedTimeSheets(statuses: string[] = ['Submitted']): Promise<HR_TimeSheetHeader[]> {
+    async getSubmittedTimeSheets(statuses: string[] = ['Submitted'], page = 1, limit = 50): Promise<HR_TimeSheetHeader[]> {
         try {
-            const { data: session } = await authClient.getSession();
-            let directReports: string[] = (session?.user as any)?.directReports || [];
+            // Try to get from Store first to avoid network call
+            let directReports: string[] = [];
+
+            try {
+                const state = useAuthStore.getState();
+                if (state.directReports && state.directReports.length > 0) {
+                    directReports = state.directReports;
+                }
+            } catch (e) { /* ignore */ }
+
+            // If store is empty (edge case), try session but only if really needed
+            if (directReports.length === 0) {
+                const { data: session } = await authClient.getSession();
+                directReports = (session?.user as any)?.directReports || [];
+            }
 
             if (typeof directReports === 'string') {
                 try {
                     directReports = JSON.parse(directReports);
                 } catch (e) {
-                    console.error("Failed to parse directReports", e);
                     directReports = [];
                 }
             }
 
-            // Fallback: Zustand Store
-            if (!Array.isArray(directReports) || directReports.length === 0) {
-                try {
-                    const state = useAuthStore.getState();
-                    if (state.directReports && state.directReports.length > 0) {
-                        directReports = state.directReports;
-                    }
-                } catch (e) { /* ignore */ }
-            }
+
 
             if (!Array.isArray(directReports) || directReports.length === 0) return [];
 
             const statusQuery = statuses.map(s => `status=${s}`).join('&');
             const reportsQuery = directReports.map(email => `employee_email=${email}`).join('&');
 
-            const response = await fetch(`${API_BASE}/timesheets?${statusQuery}&${reportsQuery}&_sort=-period_start`, { credentials: 'include' });
+            const response = await fetch(`${API_BASE}/timesheets?${statusQuery}&${reportsQuery}&_sort=-period_start&_page=${page}&_per_page=${limit}`, { credentials: 'include' });
             if (!response.ok) return [];
             return await response.json();
         } catch (error) {

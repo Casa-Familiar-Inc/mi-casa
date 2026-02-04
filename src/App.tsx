@@ -41,7 +41,7 @@ import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { UserList } from "./modules/admin/users/list";
 import { HolidayList } from "./modules/hr/holidays/list";
-import { TimeOffApprovals } from "./modules/hr/time-off/approvals";
+
 import { DepartmentsList } from "./modules/admin/departments";
 import { HRAuditDashboard } from "./modules/hr/audit/HRAuditDashboard";
 
@@ -65,7 +65,7 @@ function App() {
   useEffect(() => {
     if (session?.user) {
       const user = session.user as any;
-      
+
       let hasReports = false;
       let reports = user.directReports;
 
@@ -106,7 +106,7 @@ function App() {
         isSupervisor: isSup,
         directReports: reports,
         userRole: role,
-        userId: user.id || null, 
+        userId: user.id || null,
         allowedScreens: screens
       });
 
@@ -186,15 +186,7 @@ function App() {
         icon: <Calendar className="h-4 w-4" />
       },
     },
-    {
-      name: "TimeOffApprovals",
-      list: "/hr/time-off/approvals",
-      meta: {
-        label: "Time Off Approvals",
-        parent: "HR",
-        icon: <ShieldAlert className="h-4 w-4" />
-      },
-    },
+
     {
       name: "Supervisor",
       list: "/supervisor",
@@ -224,7 +216,7 @@ function App() {
     }
   ];
 
- 
+
   // Memoize the ability for performance (Best Practice)
   const ability = useMemo(() => {
     return defineAbilityFor({
@@ -250,20 +242,20 @@ function App() {
               accessControlProvider={{
                 can: async ({ resource, action, params }) => {
                   const act = action || 'list';
-                  
+
                   // For menu and basic list checks, use the resource string directly.
                   // Only use the object (params.resource) if we are doing instance-level ABAC.
-                  const subject = (act === 'read' || act === 'list' || !params?.resource) 
-                    ? (resource || 'all') 
+                  const subject = (act === 'read' || act === 'list' || !params?.resource)
+                    ? (resource || 'all')
                     : params.resource;
 
                   const can = ability.can(act, subject);
-                  
+
                   console.log(`[ACL] Check: ${act} on ${typeof subject === 'string' ? subject : JSON.stringify(subject)} -> Result: ${can}`);
 
-                  return { 
+                  return {
                     can,
-                    reason: !can ? "No tienes permisos para realizar esta acción" : undefined 
+                    reason: !can ? "No tienes permisos para realizar esta acción" : undefined
                   };
                 },
                 options: {
@@ -312,7 +304,7 @@ function App() {
                     <Route index element={<TimeOffList />} />
                     <Route path="new" element={<TimeOffPage />} />
                     <Route path="view/:id" element={<TimeOffPage />} />
-                    <Route path="approvals" element={<TimeOffApprovals />} />
+
                   </Route>
                   <Route path="/hr/holidays" element={<HolidayList />} />
                   <Route path="/hr/audit" element={<HRAuditDashboard />} />

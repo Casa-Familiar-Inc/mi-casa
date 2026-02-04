@@ -302,7 +302,8 @@ export const generateBulkTimeOffPDF = async (requests: HR_TimeOffRequest[]) => {
         currentY += 20;
 
         // Supervisor Signature
-        doc.text(`Supervisor Approval: ${req.supervisor_approval_by || '(Pending)'}`, 14, currentY + 10);
+        const supLabel = (req.status === 'Rejected') ? 'Rejected by:' : 'Supervisor Approval:';
+        doc.text(`${supLabel} ${req.supervisor_approval_by || '(Pending)'}`, 14, currentY + 10);
         if (req.supervisor_approval_date) {
             doc.text(`Date: ${TimeUtils.formatDisplayDateTime(req.supervisor_approval_date)}`, 120, currentY + 10);
         } else {
@@ -409,7 +410,8 @@ export const generateTimeOffPDF = async (req: HR_TimeOffRequest) => {
     currentY += 20;
 
     // Supervisor Signature
-    doc.text(`Supervisor Approval: ${req.supervisor_approval_by || '(Pending)'}`, 14, currentY + 10);
+    const supLabel = (req.status === 'Rejected') ? 'Rejected by:' : 'Supervisor Approval:';
+    doc.text(`${supLabel} ${req.supervisor_approval_by || '(Pending)'}`, 14, currentY + 10);
     if (req.supervisor_approval_date) {
         doc.text(`Date: ${TimeUtils.formatDisplayDateTime(req.supervisor_approval_date)}`, 120, currentY + 10);
     } else {

@@ -55,4 +55,28 @@ export class TimeUtils {
             return d;
         }
     }
+
+    public static formatDisplayDate(d: string | undefined): string {
+        if (!d) return '';
+        try {
+            // Assume input is YYYY-MM-DD for consistency
+            // If strictly YYYY-MM-DD
+            if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+                const [y, m, dPart] = d.split('-');
+                return `${m}/${dPart}/${y}`;
+            }
+
+            // Fallback for full ISO strings or others
+            const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
+            if (isNaN(date.getTime())) return d;
+
+            return date.toLocaleDateString('en-US', {
+                month: '2-digit',
+                day: '2-digit',
+                year: 'numeric'
+            });
+        } catch (e) {
+            return d;
+        }
+    }
 }

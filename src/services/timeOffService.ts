@@ -61,6 +61,19 @@ export const TimeOffService = {
         return requestId!;
     },
 
+    async getSupervisorHistory(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
+        try {
+            // Fetch requests with Approved or Rejected status
+            // The backend controller now filters this to only direct reports if the user is a supervisor
+            const response = await fetch(`${API_URL}?status=Approved&status=Rejected&_page=${page}&_per_page=${limit}`, { credentials: 'include' });
+            if (!response.ok) return [];
+            return await response.json();
+        } catch (error) {
+            console.error("Error fetching supervisor history:", error);
+            return [];
+        }
+    },
+
     async getRequestById(id: string): Promise<HR_TimeOffRequest | null> {
         try {
             const response = await fetch(`${API_URL}/${id}`, { credentials: 'include' });
@@ -83,9 +96,9 @@ export const TimeOffService = {
         }
     },
 
-    async getPendingRequests(): Promise<HR_TimeOffRequest[]> {
+    async getPendingRequests(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}/pending`, { credentials: 'include' });
+            const response = await fetch(`${API_URL}/pending?_page=${page}&_per_page=${limit}`, { credentials: 'include' });
             if (!response.ok) return [];
             return await response.json();
         } catch (error) {
