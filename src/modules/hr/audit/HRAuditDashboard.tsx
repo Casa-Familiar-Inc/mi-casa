@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { format, startOfWeek, addDays, subWeeks } from "date-fns";
-import { 
-    Card, 
-    CardContent, 
-    CardHeader, 
-    CardTitle, 
-    CardDescription 
+import {
+    Card,
+    CardContent,
+    CardHeader,
+    CardTitle,
+    CardDescription
 } from "../../../components/ui/card"; // Adjust imports based on actual path
 import { Button } from "../../../components/ui/button";
 import { Calendar } from "../../../components/ui/calendar";
@@ -39,13 +39,13 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { 
-    Download, 
-    Calendar as CalendarIcon, 
-    Users, 
-    CheckCircle2, 
-    Clock, 
-    AlertCircle 
+import {
+    Download,
+    Calendar as CalendarIcon,
+    Users,
+    CheckCircle2,
+    Clock,
+    AlertCircle
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { TimeSheetService } from "../../../services/timeSheetService";
@@ -60,7 +60,7 @@ export const HRAuditDashboard = () => {
     const [periods, setPeriods] = useState<any[]>([]); // Pay Periods
     const [selectedPeriodId, setSelectedPeriodId] = useState<string>('');
     const [isCreatePeriodOpen, setIsCreatePeriodOpen] = useState(false);
-    
+
     // New Period Form State
     const [newPeriodStart, setNewPeriodStart] = useState<Date | undefined>();
     const [newPeriodEnd, setNewPeriodEnd] = useState<Date | undefined>();
@@ -83,13 +83,13 @@ export const HRAuditDashboard = () => {
 
     const loadPeriods = async () => {
         const data = await TimeSheetService.getPayPeriods(); // detailed?
-        
+
         // If no periods, empty default
         setPeriods(data);
-        
+
         // Auto-select most recent Open period or just most recent
         if (data.length > 0) {
-            const active = data.find((p:any) => p.status === 'Open') || data[0];
+            const active = data.find((p: any) => p.status === 'Open') || data[0];
             setSelectedPeriodId(active.id);
         }
     };
@@ -147,7 +147,7 @@ export const HRAuditDashboard = () => {
 
         if (periods.length > 0) {
             // Sort by end_date desc just in case
-            const latest = [...periods].sort((a,b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime())[0];
+            const latest = [...periods].sort((a, b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime())[0];
             const lastEnd = new Date(latest.end_date + 'T00:00:00');
             start = addDays(lastEnd, 1);
         } else {
@@ -163,15 +163,15 @@ export const HRAuditDashboard = () => {
 
         if (d <= 15) {
             // First Half
-             start = new Date(y, m, 1);
-             end = new Date(y, m, 15);
-             name = `Period 1 - ${format(start, 'MMMM yyyy')}`;
+            start = new Date(y, m, 1);
+            end = new Date(y, m, 15);
+            name = `Period 1 - ${format(start, 'MMMM yyyy')}`;
         } else {
-             start = new Date(y, m, 16);
-             end = new Date(y, m + 1, 0); // Last day
-             name = `Period 2 - ${format(start, 'MMMM yyyy')}`;
+            start = new Date(y, m, 16);
+            end = new Date(y, m + 1, 0); // Last day
+            name = `Period 2 - ${format(start, 'MMMM yyyy')}`;
         }
-        
+
         setNewPeriodStart(start);
         setNewPeriodEnd(end);
         setNewPeriodName(name);
@@ -218,18 +218,18 @@ export const HRAuditDashboard = () => {
 
         try {
             toast.info("Generating PDF... Please wait.");
-            
+
             // We need full details (logs) for the PDF, so we might need to fetch them individually 
             // OR ensure the backend returns everything in the list (unlikely based on type definition usually, but let's check).
             // The type `HR_TimeSheetHeader` implies headers only. `TimeSheetFull` has logs.
             // Our service `getAllTimeSheets` currently returns generic list. 
             // If it returns only headers, we need to fetch details for each.
-            
+
             // Let's assume we need to fetch details concurrently.
             // CAUTION: This might be many requests. 
             // Optimization: Create a bulk fetch endpoint or fetch in batches.
             // For now, client-side batching.
-            
+
             const detailedTimesheetsPromises = timesheets.map(t => TimeSheetService.getTimeSheetById(t.id));
             const detailedTimesheets = (await Promise.all(detailedTimesheetsPromises)).filter(Boolean); // removes nulls
 
@@ -248,7 +248,7 @@ export const HRAuditDashboard = () => {
         }
         try {
             toast.info("Generating PDF...");
-            generateBulkTimeOffPDF(timeOffRequests, format(timeOffStart, "yyyy-MM-dd"), format(timeOffEnd, "yyyy-MM-dd"));
+            generateBulkTimeOffPDF(timeOffRequests);
             toast.success("Time Off Requests PDF downloaded!");
         } catch (e) {
             console.error(e);
@@ -303,14 +303,14 @@ export const HRAuditDashboard = () => {
                                     </DialogDescription>
                                 </DialogHeader>
                                 <div className="grid gap-4 py-4">
-                                     <div className="grid gap-2">
+                                    <div className="grid gap-2">
                                         <label>Period Name</label>
                                         <Input value={newPeriodName} onChange={e => setNewPeriodName(e.target.value)} />
-                                     </div>
-                                     <div className="grid grid-cols-2 gap-4">
-                                         <div className="grid gap-2">
-                                             <label>Start Date</label>
-                                             <Popover>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <label>Start Date</label>
+                                            <Popover>
                                                 <PopoverTrigger asChild>
                                                     <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !newPeriodStart && "text-muted-foreground")}>
                                                         {newPeriodStart ? format(newPeriodStart, "PPP") : <span>Start</span>}
@@ -321,10 +321,10 @@ export const HRAuditDashboard = () => {
                                                     <Calendar mode="single" selected={newPeriodStart} onSelect={setNewPeriodStart} initialFocus />
                                                 </PopoverContent>
                                             </Popover>
-                                         </div>
-                                         <div className="grid gap-2">
-                                             <label>End Date</label>
-                                             <Popover>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <label>End Date</label>
+                                            <Popover>
                                                 <PopoverTrigger asChild>
                                                     <Button variant={"outline"} className={cn("pl-3 text-left font-normal", !newPeriodEnd && "text-muted-foreground")}>
                                                         {newPeriodEnd ? format(newPeriodEnd, "PPP") : <span>End</span>}
@@ -335,8 +335,8 @@ export const HRAuditDashboard = () => {
                                                     <Calendar mode="single" selected={newPeriodEnd} onSelect={setNewPeriodEnd} initialFocus />
                                                 </PopoverContent>
                                             </Popover>
-                                         </div>
-                                     </div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <DialogFooter>
                                     <Button onClick={handleCreatePeriod}>Create Period</Button>
@@ -410,9 +410,9 @@ export const HRAuditDashboard = () => {
                                                 <span className={cn(
                                                     "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
                                                     ts.status === 'Approved' ? "bg-green-100 text-green-800 border-green-200" :
-                                                    ts.status === 'Submitted' ? "bg-amber-100 text-amber-800 border-amber-200" :
-                                                    ts.status === 'Rejected' ? "bg-red-100 text-red-800 border-red-200" :
-                                                    "bg-gray-100 text-gray-800 border-gray-200"
+                                                        ts.status === 'Submitted' ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                                            ts.status === 'Rejected' ? "bg-red-100 text-red-800 border-red-200" :
+                                                                "bg-gray-100 text-gray-800 border-gray-200"
                                                 )}>
                                                     {ts.status}
                                                 </span>
@@ -433,8 +433,8 @@ export const HRAuditDashboard = () => {
                 </Card>
             </section>
 
-             {/* Time Off Section */}
-             <section className="space-y-4 pt-8">
+            {/* Time Off Section */}
+            <section className="space-y-4 pt-8">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b pb-2">
                     <h2 className="text-xl font-semibold flex items-center gap-2">
                         <CalendarIcon className="w-5 h-5 text-purple-500" />
@@ -472,7 +472,7 @@ export const HRAuditDashboard = () => {
 
                 <Card>
                     <CardContent className="p-0">
-                         <Table>
+                        <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Request ID</TableHead>
@@ -483,7 +483,7 @@ export const HRAuditDashboard = () => {
                                     <TableHead className="text-right">Days</TableHead>
                                 </TableRow>
                             </TableHeader>
-                             <TableBody>
+                            <TableBody>
                                 {loadingTimeOff ? (
                                     <TableRow>
                                         <TableCell colSpan={6} className="text-center h-24">Loading...</TableCell>
@@ -495,13 +495,13 @@ export const HRAuditDashboard = () => {
                                             <TableCell className="font-medium">{req.employee_name}</TableCell>
                                             <TableCell>{req.request_type}</TableCell>
                                             <TableCell>{format(new Date(req.start_date), 'MM/dd')} - {format(new Date(req.end_date), 'MM/dd')}</TableCell>
-                                             <TableCell>
+                                            <TableCell>
                                                 <span className={cn(
                                                     "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border",
                                                     req.status === 'Approved' ? "bg-green-100 text-green-800 border-green-200" :
-                                                    req.status === 'Pending' ? "bg-blue-100 text-blue-800 border-blue-200" :
-                                                    req.status === 'Rejected' ? "bg-red-100 text-red-800 border-red-200" :
-                                                    "bg-gray-100 text-gray-800 border-gray-200"
+                                                        req.status === 'Pending' ? "bg-blue-100 text-blue-800 border-blue-200" :
+                                                            req.status === 'Rejected' ? "bg-red-100 text-red-800 border-red-200" :
+                                                                "bg-gray-100 text-gray-800 border-gray-200"
                                                 )}>
                                                     {req.status}
                                                 </span>
@@ -520,7 +520,7 @@ export const HRAuditDashboard = () => {
                         </Table>
                     </CardContent>
                 </Card>
-             </section>
+            </section>
         </div>
     );
 };

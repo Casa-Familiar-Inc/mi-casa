@@ -38,7 +38,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { useGetIdentity, useGo, usePermissions } from '@refinedev/core';
 import { toast } from "sonner";
-import { Settings, Download, Calendar } from 'lucide-react';
+import { Settings, Download, Calendar, Clock } from 'lucide-react';
 import { ActionToolbar } from '@/components/common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../../../utils/graphEmail';
 import { authClient } from '../../../../lib/auth';
@@ -607,6 +607,47 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         }
     };
 
+    const handleAutoFill = () => {
+        if (!userSettings) {
+            toast.warning("No settings found. Please configure your default schedule in Settings.");
+            return;
+        }
+
+        const newLogs = logs.map(log => {
+             // Skip if locked (TimeOff / Holiday)
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             if ((log as any).is_timeoff_locked || (log as any).is_company_locked) return log;
+             
+             // Skip Weekends (Sat/Sun) for auto-fill default
+             const d = new Date(log.date.includes('T') ? log.date : log.date + 'T00:00:00');
+             if (d.getDay() === 0 || d.getDay() === 6) return log;
+
+             // Don't overwrite if leave exists
+             const hasLeave = ['wd','vac','hol','sick','ber','ot','jury','unpd'].some(k => Number((log as any)[k]) > 0);
+             if (hasLeave) return log;
+
+             const tIn = userSettings.default_time_in || '';
+             const lOut = userSettings.default_lunch_out || '';
+             const lIn = userSettings.default_lunch_in || '';
+             const tOut = userSettings.default_time_out || '';
+
+             const totalStr = TimeUtils.calculateDailyTotal(tIn, lOut, lIn, tOut);
+             
+             return {
+                 ...log,
+                 time_in: tIn,
+                 lunch_out: lOut,
+                 lunch_in: lIn,
+                 time_out: tOut,
+                 reg_hours: parseFloat(totalStr),
+                 daily_total: parseFloat(totalStr)
+             };
+        });
+
+        setLogs(newLogs);
+        toast.success("Timesheet auto-filled from settings (Mon-Fri)");
+    };
+
     const handleSupervisorApprove = async () => {
         if (!header) return;
         if (!confirm(`Approve timesheet for ${header.employee_name}?`)) return;
@@ -810,6 +851,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                         {/* EMPLOYEE ACTIONS - STRICT OWNER ONLY */}
                         {!isSupervisorView && (header?.status === 'Draft' || header?.status === 'Rejected' || !header?.status) && (
                             <>
+                                <Button variant="outline" onClick={handleAutoFill} className="mr-2 border-dashed">
+                                    <Clock className="w-4 h-4 mr-1"/> Auto-Fill
+                                </Button>
                                 <Button variant="outline" onClick={() => handleSave('Draft')}>Save Draft</Button>
                                 <Button onClick={() => handleSave('Submitted')}>Sign & Submit</Button>
                             </>

@@ -87,7 +87,7 @@ export const HolidayList: React.FC = () => {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="p-6 w-full mx-auto space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-2xl font-bold">Company Calendar</h1>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -190,7 +190,7 @@ export const HolidayList: React.FC = () => {
                                         </TableCell>
                                         <TableCell className="font-bold">{h.name}</TableCell>
                                         <TableCell>
-                                            <Badge variant="outline" className="bg-amber-50">
+                                            <Badge variant="outline" className="bg-amber-100 text-amber-900 border-amber-200">
                                                 {conceptLabels[h.concept] || h.concept}
                                             </Badge>
                                         </TableCell>
