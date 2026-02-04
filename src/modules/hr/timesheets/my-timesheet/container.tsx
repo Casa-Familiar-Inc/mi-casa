@@ -38,7 +38,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { useGetIdentity, useGo, usePermissions } from '@refinedev/core';
 import { toast } from "sonner";
-import { Settings, Download, Calendar, Clock } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Settings, Download, Calendar, Clock, Info, AlertCircle } from 'lucide-react';
 import { ActionToolbar } from '@/components/common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../../../utils/graphEmail';
 import { authClient } from '../../../../lib/auth';
@@ -82,6 +83,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     // Reject Dialog State (Supervisor)
     const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
+
+    // Approve Dialog State (Supervisor)
+    const [approveDialogOpen, setApproveDialogOpen] = useState(false);
 
     // Settings Modal State
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -242,15 +246,11 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     (newLogs[idx] as any)[field] = hours;
 
-                    // Lock and clear time fields
-                    newLogs[idx].time_in = '';
-                    newLogs[idx].lunch_out = '';
-                    newLogs[idx].lunch_in = '';
-                    newLogs[idx].time_out = '';
-                    newLogs[idx].reg_hours = 0;
-                    newLogs[idx].daily_total = hours;
+                    // UPDATED LOGIC: Do NOT clear time fields or lock them.
+                    // Allow partial days (e.g. 4 hours worked + 4 hours Vacation)
+                    // newLogs[idx].reg_hours remains whatever it is (usually 0 if fresh)
 
-                    // Add meta to indicate it's locked by TimeOff
+                    // Add meta to indicate it has a timeoff (for UI indicator), but NOT locked
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     (newLogs[idx] as any).is_timeoff_locked = true;
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -438,7 +438,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours, // Update totals
                     additional_info: additionalInfo,
                     employee_signed_by: isEmployeeSigning ? user : header.employee_signed_by,
-                    employee_signed_date: isEmployeeSigning ? new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16) : header.employee_signed_date,
+                    // REMOVED: employee_signed_date (Backend handles this now)
                     // IMPORTANT: Do NOT touch employee_email here. It's already in `header`.
                 };
             } else {
@@ -458,9 +458,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours,
                     additional_info: additionalInfo,
                     employee_signed_by: status === 'Submitted' ? user : '',
-                    employee_signed_date: status === 'Submitted' ? new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16) : '',
+                    // REMOVED: employee_signed_date (Backend handles this now)
                     supervisor_signed_by: '',
-                    supervisor_signed_date: '',
+                    // REMOVED: supervisor_signed_date
                     pay_period_id: p?.key || undefined // Pass the ID
                 };
             }
@@ -570,12 +570,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         }
     };
 
-    const handleDownloadPDF = () => {
+    const handleDownloadPDF = async () => {
         if (!header || !logs.length) {
             toast.error("No timesheet data to export");
             return;
         }
-        generateTimeSheetPDF(header, logs, compTimeEntries);
+        await generateTimeSheetPDF(header, logs, compTimeEntries);
         toast.success("PDF Exported");
     };
 
@@ -650,7 +650,12 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
 
     const handleSupervisorApprove = async () => {
         if (!header) return;
-        if (!confirm(`Approve timesheet for ${header.employee_name}?`)) return;
+        setApproveDialogOpen(true);
+    };
+
+    const confirmApproval = async () => {
+        if (!header) return;
+        setApproveDialogOpen(false);
         try {
             // First save any edits
             await handleSave(header.status as any);
@@ -903,6 +908,20 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 </div>
             </div>
 
+            {/* REJECTION ALERT */}
+            {header?.status === 'Rejected' && header.additional_info && (
+                <div className="bg-red-50 border border-red-200 p-4 mb-4 rounded-md flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                    <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+                    <div>
+                        <h4 className="font-semibold text-red-800">Timesheet Rejected</h4>
+                        <p className="text-sm text-red-700 mt-1">
+                            Reason: <span className="italic">"{header.additional_info}"</span>
+                        </p>
+                        <p className="text-xs text-red-600 mt-2">Please correct the issues and re-submit.</p>
+                    </div>
+                </div>
+            )}
+
             {/* STATUS BANNER - Show only if not Draft */}
             {showSignatures && (
                 <div className="bg-muted border border-border p-3 text-sm rounded text-muted-foreground">
@@ -939,18 +958,43 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 {logs.map((log, idx) => {
                                     const isTimeOffLocked = (log as any).is_timeoff_locked;
                                     const isCompanyLocked = (log as any).is_company_locked;
-                                    const isLocked = isTimeOffLocked || isCompanyLocked;
+                                    // UPDATED LOGIC: Only lock if Company Holiday (Global)
+                                    // Time Off Requests now allow editing (mixing work + leave)
+                                    const isLocked = isCompanyLocked;
                                     const holidayName = (log as any).holiday_name;
+                                    const lockedField = (log as any).locked_field;
 
                                     return (
                                         <TableRow
                                             key={idx}
-                                            className={`${isTimeOffLocked ? "bg-amber-100/30" : ""} ${isCompanyLocked ? "bg-blue-100/40 border-l-4 border-l-blue-500" : ""}`}
-                                            title={isCompanyLocked ? `Company Holiday: ${holidayName}` : ""}
+                                            className={`${isTimeOffLocked ? "bg-amber-50/50" : ""} ${isCompanyLocked ? "bg-blue-100/40 border-l-4 border-l-blue-500" : ""}`}
                                         >
                                             <TableCell className="p-2 text-muted-foreground flex items-center gap-1">
                                                 {log.date}
-                                                {isCompanyLocked && <Calendar className="h-3 w-3 text-blue-500" />}
+                                                {isCompanyLocked && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <Calendar className="h-3 w-3 text-blue-500 cursor-help" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Company Holiday: {holidayName}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                                {isTimeOffLocked && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger>
+                                                                <Info className="h-3 w-3 text-amber-500 cursor-help" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Approved Time Off: {lockedField?.toUpperCase()}</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
                                             </TableCell>
                                             <TableCell className="p-2 text-muted-foreground">{log.day_name}</TableCell>
 
@@ -1156,6 +1200,23 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
                         <Button variant="destructive" onClick={handleSupervisorReject}>Reject</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* SUPERVISOR APPROVE DIALOG */}
+            <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Approve Timesheet</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to approve this timesheet for <span className="font-bold">{header?.employee_name}</span>?
+                            This action will lock the timesheet.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
+                        <Button className="bg-green-600 hover:bg-green-700" onClick={confirmApproval}>Confirm Approval</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

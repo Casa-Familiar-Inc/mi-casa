@@ -3,6 +3,7 @@ import { useGetIdentity, useGo } from '@refinedev/core';
 import { TimeOffService } from '../../../services/timeOffService';
 import { HR_TimeOffRequest } from '../../../types/timeoff';
 import { TimeUtils } from '../../../utils/TimeUtils';
+import { generateTimeOffPDF } from '../../../utils/PDFUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +14,7 @@ import { toast } from 'sonner';
 import { Separator } from '@/components/ui/separator';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle, ShieldAlert, Trash2 } from 'lucide-react';
+import { CalendarDays, Calendar as CalendarIcon, Clock, AlertCircle, ShieldAlert, Trash2, Download } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
     AlertDialog,
@@ -51,10 +52,10 @@ const REQUEST_TYPES = [
 ];
 
 export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId }) => {
-    const { data: identity } = useGetIdentity<{ 
-        email: string; 
-        name: string; 
-        departmentId?: string; 
+    const { data: identity } = useGetIdentity<{
+        email: string;
+        name: string;
+        departmentId?: string;
     }>();
 
     const { directReports, userRole } = useAuthStore();
@@ -76,7 +77,7 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
     });
     const [requestMode, setRequestMode] = useState<'FULL_DAYS' | 'SINGLE_DAY' | 'PARTIAL_DAY'>('FULL_DAYS');
     const [overlappingRequests, setOverlappingRequests] = useState<HR_TimeOffRequest[]>([]);
-    
+
     // Dialog States
     const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isStatusUpdateDialogOpen, setIsStatusUpdateDialogOpen] = useState(false);
@@ -125,10 +126,10 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                         console.error("Failed to fetch department info", e);
                     }
                 }
-                setFormData(prev => ({ 
-                    ...prev, 
+                setFormData(prev => ({
+                    ...prev,
                     employee_name: identity.name,
-                    department: deptName 
+                    department: deptName
                 }));
             };
             init();
@@ -429,337 +430,348 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
     return (
         <>
-        <div className="space-y-6 max-w-4xl mx-auto">
-            {['Pending', 'Rejected', 'Withdrawn', 'Cancelled'].includes(formData.status || '') && isOwner && (
-                <Alert className="bg-amber-50 border-amber-200">
-                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                    <AlertDescription className="text-amber-800 flex items-center justify-between w-full">
-                        <div className="flex flex-col gap-1">
-                            <span className="font-medium">
-                                {formData.status === 'Pending' 
-                                    ? "This request is pending approval. You can move it back to draft if you need to make changes."
-                                    : `This request is currently ${formData.status}. To modify it, please move it back to draft status.`
-                                }
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="destructive"
-                                size="sm"
-                                className="font-bold flex items-center gap-1"
-                                onClick={() => setIsDeleteDialogOpen(true)}
-                                disabled={isLoading}
-                            >
-                                <Trash2 className="h-3 w-3" /> Delete
-                            </Button>
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="border-amber-300 hover:bg-amber-100 font-bold"
-                                onClick={() => handleSave('Draft')} 
-                                disabled={isLoading}
-                            >
-                                Move to Draft
-                            </Button>
-                        </div>
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            {isSupervisorViewing && formData.status === 'Pending' && (
-                <div className="flex justify-end gap-4 p-4 bg-muted/50 rounded-lg border border-dashed">
-                    <Button
-                        variant="outline"
-                        className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
-                        onClick={() => handleStatusUpdate('Rejected')}
-                        disabled={isLoading}
-                    >
-                        Reject Request
-                    </Button>
-                    <Button
-                        className="bg-green-600 hover:bg-green-700 text-white"
-                        onClick={() => handleStatusUpdate('Approved')}
-                        disabled={isLoading}
-                    >
-                        Approve Request
-                    </Button>
-                </div>
-            )}
-
-            {/* 1. EMPLOYEE PROFILE */}
-            <Card>
-                <CardHeader className="bg-muted py-2">
-                    <CardTitle className="uppercase text-xs font-bold">Employee Profile</CardTitle>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
-                    <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
-                        <Input value={formData.employee_name || ''} readOnly className="bg-muted" />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
-                        <Input value={formData.department || ''} readOnly className="bg-muted" />
-                    </div>
-                    <div className="space-y-1.5">
-                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
-                        <Input type="date" value={formData.today_date ? formData.today_date.split('T')[0] : ''} readOnly className="bg-muted" />
-                    </div>
-                </CardContent>
-            </Card>
-
-            {overlappingRequests.length > 0 && formData.status !== 'Approved' && (
-                <Alert variant="destructive" className="bg-amber-50 border-amber-200 text-amber-900">
-                    <AlertCircle className="h-4 w-4 text-amber-600" />
-                    <AlertTitle className="text-xs font-bold uppercase">Overlapping Requests Found</AlertTitle>
-                    <AlertDescription className="text-xs">
-                        You already have {overlappingRequests.length} active request(s) for this period.
-                        Please ensure the total hours per day does not exceed 8.0 hrs.
-                    </AlertDescription>
-                </Alert>
-            )}
-
-            <div className="grid grid-cols-1 gap-6">
-                {/* 3. REQUEST DATES */}
-                <Card className="w-full">
-                    <CardHeader className="bg-black text-white py-2 flex flex-row items-center justify-between">
-                        <CardTitle className="uppercase text-xs font-bold">Request Details</CardTitle>
-                        <Tabs value={requestMode} onValueChange={handleModeChange} className={`w-auto ${!canEdit ? 'pointer-events-none opacity-80' : ''}`}>
-                            <TabsList className="bg-white/10 h-7 p-0.5">
-                                <TabsTrigger value="FULL_DAYS" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
-                                    <CalendarDays className="h-3 w-3 mr-1" /> FULL DAYS
-                                </TabsTrigger>
-                                <TabsTrigger value="SINGLE_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
-                                    <CalendarIcon className="h-3 w-3 mr-1" /> SINGLE DAY
-                                </TabsTrigger>
-                                <TabsTrigger value="PARTIAL_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
-                                    <Clock className="h-3 w-3 mr-1" /> PARTIAL
-                                </TabsTrigger>
-                            </TabsList>
-                        </Tabs>
-                    </CardHeader>
-                    <CardContent className="space-y-6 pt-6">
-                        {requestMode === 'FULL_DAYS' ? (
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
-                                    <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
-                                    <Input
-                                        type="date"
-                                        value={formData.end_date ? formData.end_date.split('T')[0] : ''}
-                                        min={formData.start_date}
-                                        onChange={(e) => handleDateChange('end_date', e.target.value)}
-                                        disabled={!canEdit}
-                                    />
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-1.5">
-                                <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
-                                <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
-                            </div>
-                        )}
-
-                        <div className="space-y-1.5">
-                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
-                            <Input type="date" value={formData.return_date ? formData.return_date.split('T')[0] : ''} onChange={(e) => handleChange('return_date', e.target.value)} disabled={!canEdit} />
-                        </div>
-
-                        <Separator />
-
-                        <div className={`space-y-4 p-4 rounded-lg border transition-colors ${requestMode === 'PARTIAL_DAY' ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-slate-100 border-slate-200'}`}>
-                            <div className="flex justify-between items-center">
-                                <div className="space-y-0.5">
-                                    <Label className={`text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>Total Hours Requested</Label>
-                                    <p className="text-[10px] text-muted-foreground italic">
-                                        {requestMode === 'PARTIAL_DAY' ? 'Enter the exact hours you will be away.' : 'Standard working day = 8.00 hrs.'}
-                                    </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <Input
-                                        type="number"
-                                        step="0.5"
-                                        readOnly={!(canEdit && requestMode === 'PARTIAL_DAY')}
-                                        className={`w-24 text-right font-bold text-lg h-9 bg-white ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600 border-blue-400 ring-2 ring-blue-100' : 'text-slate-900 border-slate-300 shadow-inner'}`}
-                                        value={formData.total_hours_requested}
-                                        onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value) || 0)}
-                                    />
-                                    <span className={`font-bold text-sm ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>HRS</span>
-                                </div>
-                            </div>
-
-                            <div className={`pt-2 border-t border-dashed flex justify-between items-center text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600' : 'text-slate-500'}`}>
-                                <span>Calculated Period:</span>
-                                <span>
-                                    {requestMode === 'PARTIAL_DAY' ? 'Partial day request' : `${formData.num_days_requested} Full working days`}
+            <div className="space-y-6 max-w-4xl mx-auto">
+                {['Pending', 'Rejected', 'Withdrawn', 'Cancelled'].includes(formData.status || '') && isOwner && (
+                    <Alert className="bg-amber-50 border-amber-200">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        <AlertDescription className="text-amber-800 flex items-center justify-between w-full">
+                            <div className="flex flex-col gap-1">
+                                <span className="font-medium">
+                                    {formData.status === 'Pending'
+                                        ? "This request is pending approval. You can move it back to draft if you need to make changes."
+                                        : `This request is currently ${formData.status}. To modify it, please move it back to draft status.`
+                                    }
                                 </span>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="destructive"
+                                    size="sm"
+                                    className="font-bold flex items-center gap-1"
+                                    onClick={() => setIsDeleteDialogOpen(true)}
+                                    disabled={isLoading}
+                                >
+                                    <Trash2 className="h-3 w-3" /> Delete
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-amber-300 hover:bg-amber-100 font-bold"
+                                    onClick={() => handleSave('Draft')}
+                                    disabled={isLoading}
+                                >
+                                    Move to Draft
+                                </Button>
+                            </div>
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                {isSupervisorViewing && formData.status === 'Pending' && (
+                    <div className="flex justify-end gap-4 p-4 bg-muted/50 rounded-lg border border-dashed">
+                        <Button
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                            onClick={() => handleStatusUpdate('Rejected')}
+                            disabled={isLoading}
+                        >
+                            Reject Request
+                        </Button>
+                        <Button
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            onClick={() => handleStatusUpdate('Approved')}
+                            disabled={isLoading}
+                        >
+                            Approve Request
+                        </Button>
+                    </div>
+                )}
+
+                {/* ACTION TITLE + PRINT BUTTON */}
+                {requestId && (
+                    <div className="flex justify-end mb-2">
+                        <Button variant="outline" size="sm" onClick={async () => {
+                            await generateTimeOffPDF(formData as HR_TimeOffRequest);
+                            toast.success("PDF Exported");
+                        }}>
+                            <Download className="w-4 h-4 mr-2" /> Download PDF
+                        </Button>
+                    </div>
+                )}
+
+                {/* 1. EMPLOYEE PROFILE */}
+                <Card>
+                    <CardHeader className="bg-muted py-2">
+                        <CardTitle className="uppercase text-xs font-bold">Employee Profile</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6">
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Employee Name</Label>
+                            <Input value={formData.employee_name || ''} readOnly className="bg-muted" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Department</Label>
+                            <Input value={formData.department || ''} readOnly className="bg-muted" />
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label className="text-[10px] font-bold text-muted-foreground uppercase">Today's Date</Label>
+                            <Input type="date" value={formData.today_date ? formData.today_date.split('T')[0] : ''} readOnly className="bg-muted" />
                         </div>
                     </CardContent>
                 </Card>
-            </div>
 
-            <Card>
-                <CardHeader className="bg-black text-white py-2">
-                    <CardTitle className="text-center uppercase text-sm">Type of Request</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-                        {REQUEST_TYPES.map(type => (
-                            <div key={type.id} className="flex items-center space-x-2">
-                                <Checkbox
-                                    id={type.id}
-                                    checked={formData.request_type === type.id}
-                                    onCheckedChange={() => handleChange('request_type', type.id)}
-                                    disabled={!canEdit}
-                                />
-                                <Label htmlFor={type.id} className="cursor-pointer">{type.label.toUpperCase()}</Label>
+                {overlappingRequests.length > 0 && formData.status !== 'Approved' && (
+                    <Alert variant="destructive" className="bg-amber-50 border-amber-200 text-amber-900">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        <AlertTitle className="text-xs font-bold uppercase">Overlapping Requests Found</AlertTitle>
+                        <AlertDescription className="text-xs">
+                            You already have {overlappingRequests.length} active request(s) for this period.
+                            Please ensure the total hours per day does not exceed 8.0 hrs.
+                        </AlertDescription>
+                    </Alert>
+                )}
+
+                <div className="grid grid-cols-1 gap-6">
+                    {/* 3. REQUEST DATES */}
+                    <Card className="w-full">
+                        <CardHeader className="bg-black text-white py-2 flex flex-row items-center justify-between">
+                            <CardTitle className="uppercase text-xs font-bold">Request Details</CardTitle>
+                            <Tabs value={requestMode} onValueChange={handleModeChange} className={`w-auto ${!canEdit ? 'pointer-events-none opacity-80' : ''}`}>
+                                <TabsList className="bg-white/10 h-7 p-0.5">
+                                    <TabsTrigger value="FULL_DAYS" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                        <CalendarDays className="h-3 w-3 mr-1" /> FULL DAYS
+                                    </TabsTrigger>
+                                    <TabsTrigger value="SINGLE_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                        <CalendarIcon className="h-3 w-3 mr-1" /> SINGLE DAY
+                                    </TabsTrigger>
+                                    <TabsTrigger value="PARTIAL_DAY" className="text-[10px] h-6 px-2 data-[state=active]:bg-white data-[state=active]:text-black">
+                                        <Clock className="h-3 w-3 mr-1" /> PARTIAL
+                                    </TabsTrigger>
+                                </TabsList>
+                            </Tabs>
+                        </CardHeader>
+                        <CardContent className="space-y-6 pt-6">
+                            {requestMode === 'FULL_DAYS' ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Starting On</Label>
+                                        <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-[10px] font-bold text-muted-foreground uppercase">Ending On</Label>
+                                        <Input
+                                            type="date"
+                                            value={formData.end_date ? formData.end_date.split('T')[0] : ''}
+                                            min={formData.start_date}
+                                            onChange={(e) => handleDateChange('end_date', e.target.value)}
+                                            disabled={!canEdit}
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-1.5">
+                                    <Label className="text-[10px] font-bold text-muted-foreground uppercase">Date of Request</Label>
+                                    <Input type="date" value={formData.start_date ? formData.start_date.split('T')[0] : ''} onChange={(e) => handleDateChange('start_date', e.target.value)} disabled={!canEdit} />
+                                </div>
+                            )}
+
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-bold text-muted-foreground uppercase">Return to Work Date</Label>
+                                <Input type="date" value={formData.return_date ? formData.return_date.split('T')[0] : ''} onChange={(e) => handleChange('return_date', e.target.value)} disabled={!canEdit} />
                             </div>
-                        ))}
-                    </div>
 
-                    <div className="space-y-2">
-                        <Label>REASON:</Label>
-                        <Input value={formData.reason || ''} onChange={(e) => handleChange('reason', e.target.value)} disabled={!canEdit} />
-                    </div>
+                            <Separator />
 
-                    <div className="space-y-2">
-                        <Label>COMMENTS:</Label>
-                        <Textarea value={formData.comments || ''} onChange={(e) => handleChange('comments', e.target.value)} disabled={!canEdit} />
-                    </div>
-                </CardContent>
-            </Card>
+                            <div className={`space-y-4 p-4 rounded-lg border transition-colors ${requestMode === 'PARTIAL_DAY' ? 'bg-blue-50 border-blue-300 shadow-sm' : 'bg-slate-100 border-slate-200'}`}>
+                                <div className="flex justify-between items-center">
+                                    <div className="space-y-0.5">
+                                        <Label className={`text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>Total Hours Requested</Label>
+                                        <p className="text-[10px] text-muted-foreground italic">
+                                            {requestMode === 'PARTIAL_DAY' ? 'Enter the exact hours you will be away.' : 'Standard working day = 8.00 hrs.'}
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            step="0.5"
+                                            readOnly={!(canEdit && requestMode === 'PARTIAL_DAY')}
+                                            className={`w-24 text-right font-bold text-lg h-9 bg-white ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600 border-blue-400 ring-2 ring-blue-100' : 'text-slate-900 border-slate-300 shadow-inner'}`}
+                                            value={formData.total_hours_requested}
+                                            onChange={(e) => handleChange('total_hours_requested', parseFloat(e.target.value) || 0)}
+                                        />
+                                        <span className={`font-bold text-sm ${requestMode === 'PARTIAL_DAY' ? 'text-blue-700' : 'text-slate-600'}`}>HRS</span>
+                                    </div>
+                                </div>
 
-            <Card>
-                <CardHeader className="bg-black text-white py-2">
-                    <CardTitle className="text-center uppercase text-sm">Employee Certification</CardTitle>
-                </CardHeader>
-                <CardContent className="pt-6 space-y-4">
-                    <p className="text-sm italic">I understand that time away from work is subject to management approval and company policies.</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Employee Signature:</Label>
-                            <Input value={formData.employee_signature || identity?.name || ''} readOnly className="bg-muted" />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Date:</Label>
-                            <Input 
-                                value={TimeUtils.formatDisplayDateTime(formData.employee_signature_date)} 
-                                readOnly 
-                                className="bg-muted" 
-                            />
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
+                                <div className={`pt-2 border-t border-dashed flex justify-between items-center text-[10px] font-bold uppercase ${requestMode === 'PARTIAL_DAY' ? 'text-blue-600' : 'text-slate-500'}`}>
+                                    <span>Calculated Period:</span>
+                                    <span>
+                                        {requestMode === 'PARTIAL_DAY' ? 'Partial day request' : `${formData.num_days_requested} Full working days`}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
-            {(formData.status === 'Approved' || formData.status === 'Rejected') && (
                 <Card>
                     <CardHeader className="bg-black text-white py-2">
-                        <CardTitle className="text-center uppercase text-sm">Supervisor Approval</CardTitle>
+                        <CardTitle className="text-center uppercase text-sm">Type of Request</CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                            {REQUEST_TYPES.map(type => (
+                                <div key={type.id} className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id={type.id}
+                                        checked={formData.request_type === type.id}
+                                        onCheckedChange={() => handleChange('request_type', type.id)}
+                                        disabled={!canEdit}
+                                    />
+                                    <Label htmlFor={type.id} className="cursor-pointer">{type.label.toUpperCase()}</Label>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>REASON:</Label>
+                            <Input value={formData.reason || ''} onChange={(e) => handleChange('reason', e.target.value)} disabled={!canEdit} />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label>COMMENTS:</Label>
+                            <Textarea value={formData.comments || ''} onChange={(e) => handleChange('comments', e.target.value)} disabled={!canEdit} />
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="bg-black text-white py-2">
+                        <CardTitle className="text-center uppercase text-sm">Employee Certification</CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                        <div className="flex justify-center pb-2">
-                            <div className={`px-4 py-1.5 rounded-full font-bold uppercase text-xs tracking-wide border ${
-                                formData.status === 'Approved'
-                                    ? 'bg-green-100 text-green-800 border-green-200'
-                                    : 'bg-red-100 text-red-800 border-red-200'
-                            }`}>
-                                Status: {formData.status}
-                            </div>
-                        </div>
+                        <p className="text-sm italic">I understand that time away from work is subject to management approval and company policies.</p>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Supervisor Signature:</Label>
-                                <Input value={formData.supervisor_approval_by || ''} readOnly className="bg-muted" />
+                                <Label>Employee Signature:</Label>
+                                <Input value={formData.employee_signature || identity?.name || ''} readOnly className="bg-muted" />
                             </div>
                             <div className="space-y-2">
                                 <Label>Date:</Label>
-                                <Input 
-                                    value={TimeUtils.formatDisplayDateTime(formData.supervisor_approval_date)} 
-                                    readOnly 
-                                    className="bg-muted" 
+                                <Input
+                                    value={TimeUtils.formatDisplayDateTime(formData.employee_signature_date)}
+                                    readOnly
+                                    className="bg-muted"
                                 />
                             </div>
                         </div>
                     </CardContent>
                 </Card>
-            )}
 
-            {!isSupervisorViewing && canEdit && (
-                <div className="flex justify-end gap-4">
-                    <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isLoading}>Save Draft</Button>
-                    <Button onClick={() => handleSave('Pending')} disabled={isLoading}>Submit Request</Button>
-                </div>
-            )}
+                {(formData.status === 'Approved' || formData.status === 'Rejected') && (
+                    <Card>
+                        <CardHeader className="bg-black text-white py-2">
+                            <CardTitle className="text-center uppercase text-sm">Supervisor Approval</CardTitle>
+                        </CardHeader>
+                        <CardContent className="pt-6 space-y-4">
+                            <div className="flex justify-center pb-2">
+                                <div className={`px-4 py-1.5 rounded-full font-bold uppercase text-xs tracking-wide border ${formData.status === 'Approved'
+                                    ? 'bg-green-100 text-green-800 border-green-200'
+                                    : 'bg-red-100 text-red-800 border-red-200'
+                                    }`}>
+                                    Status: {formData.status}
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Supervisor Signature:</Label>
+                                    <Input value={formData.supervisor_approval_by || ''} readOnly className="bg-muted" />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Date:</Label>
+                                    <Input
+                                        value={TimeUtils.formatDisplayDateTime(formData.supervisor_approval_date)}
+                                        readOnly
+                                        className="bg-muted"
+                                    />
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
-        </div>
+                {!isSupervisorViewing && canEdit && (
+                    <div className="flex justify-end gap-4">
+                        <Button variant="outline" onClick={() => handleSave('Draft')} disabled={isLoading}>Save Draft</Button>
+                        <Button onClick={() => handleSave('Pending')} disabled={isLoading}>Submit Request</Button>
+                    </div>
+                )}
 
-        {/* DELETE CONFIRMATION DIALOG */}
-        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-            <AlertDialogContent>
-                <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Request Permanently?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will permanently remove the time off request from the system.
-                    </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                        onClick={(e) => {
-                            e.preventDefault();
-                            executeDelete();
-                        }}
-                        className="bg-red-600 hover:bg-red-700"
-                        disabled={isLoading}
-                    >
-                        {isLoading ? "Deleting..." : "Delete Permanently"}
-                    </AlertDialogAction>
-                </AlertDialogFooter>
-            </AlertDialogContent>
-        </AlertDialog>
+            </div >
 
-        {/* STATUS UPDATE DIALOG (APPROVE/REJECT) */}
-        <Dialog open={isStatusUpdateDialogOpen} onOpenChange={setIsStatusUpdateDialogOpen}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle className="uppercase tracking-tight">
-                        {pendingStatusUpdate === 'Approved' ? 'Approve Request' : 'Reject Request'}
-                    </DialogTitle>
-                    <DialogDescription>
-                        {pendingStatusUpdate === 'Approved' 
-                            ? "Are you sure you want to approve this request? You can add optional comments below."
-                            : "Please provide a reason or additional comments for rejecting this request."
-                        }
-                    </DialogDescription>
-                </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="comments" className="text-[10px] font-bold uppercase mb-2 block">Comments (Optional)</Label>
-                    <Textarea 
-                        id="comments"
-                        placeholder="Enter any relevant information here..."
-                        value={statusComments}
-                        onChange={(e) => setStatusComments(e.target.value)}
-                        className="min-h-[100px]"
-                    />
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsStatusUpdateDialogOpen(false)} disabled={isLoading}>
-                        Cancel
-                    </Button>
-                    <Button 
-                        onClick={executeStatusUpdate}
-                        disabled={isLoading}
-                        className={pendingStatusUpdate === 'Approved' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
-                    >
-                        {isLoading ? 'Processing...' : (pendingStatusUpdate === 'Approved' ? 'Confirm Approval' : 'Confirm Rejection')}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+            {/* DELETE CONFIRMATION DIALOG */}
+            < AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen} >
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Request Permanently?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently remove the time off request from the system.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={(e) => {
+                                e.preventDefault();
+                                executeDelete();
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                            disabled={isLoading}
+                        >
+                            {isLoading ? "Deleting..." : "Delete Permanently"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog >
+
+            {/* STATUS UPDATE DIALOG (APPROVE/REJECT) */}
+            < Dialog open={isStatusUpdateDialogOpen} onOpenChange={setIsStatusUpdateDialogOpen} >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="uppercase tracking-tight">
+                            {pendingStatusUpdate === 'Approved' ? 'Approve Request' : 'Reject Request'}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {pendingStatusUpdate === 'Approved'
+                                ? "Are you sure you want to approve this request? You can add optional comments below."
+                                : "Please provide a reason or additional comments for rejecting this request."
+                            }
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="comments" className="text-[10px] font-bold uppercase mb-2 block">Comments (Optional)</Label>
+                        <Textarea
+                            id="comments"
+                            placeholder="Enter any relevant information here..."
+                            value={statusComments}
+                            onChange={(e) => setStatusComments(e.target.value)}
+                            className="min-h-[100px]"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsStatusUpdateDialogOpen(false)} disabled={isLoading}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={executeStatusUpdate}
+                            disabled={isLoading}
+                            className={pendingStatusUpdate === 'Approved' ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-red-600 hover:bg-red-700 text-white'}
+                        >
+                            {isLoading ? 'Processing...' : (pendingStatusUpdate === 'Approved' ? 'Confirm Approval' : 'Confirm Rejection')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog >
         </>
     );
 };

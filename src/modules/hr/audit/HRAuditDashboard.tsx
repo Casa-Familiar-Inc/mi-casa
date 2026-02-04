@@ -233,7 +233,7 @@ export const HRAuditDashboard = () => {
             const detailedTimesheetsPromises = timesheets.map(t => TimeSheetService.getTimeSheetById(t.id));
             const detailedTimesheets = (await Promise.all(detailedTimesheetsPromises)).filter(Boolean); // removes nulls
 
-            generateBulkTimesheetPDF(detailedTimesheets as any, currentPeriod.name);
+            await generateBulkTimesheetPDF(detailedTimesheets as any, currentPeriod.name);
             toast.success("Timesheets PDF downloaded!");
         } catch (e) {
             console.error(e);
@@ -248,7 +248,7 @@ export const HRAuditDashboard = () => {
         }
         try {
             toast.info("Generating PDF...");
-            generateBulkTimeOffPDF(timeOffRequests);
+            await generateBulkTimeOffPDF(timeOffRequests);
             toast.success("Time Off Requests PDF downloaded!");
         } catch (e) {
             console.error(e);

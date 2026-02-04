@@ -2,11 +2,13 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { HR_TimeSheetHeader, HR_TimeSheetLog, HR_CompTimeEntry } from '../types/timesheet';
 import { TimeUtils } from './TimeUtils';
+import { loadLogoBase64, addLogoToPDF } from "./PDFHelpers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSheetLog[], compTimeEntries: HR_CompTimeEntry[] = []) => {
+export const generateTimeSheetPDF = async (header: HR_TimeSheetHeader, logs: HR_TimeSheetLog[], compTimeEntries: HR_CompTimeEntry[] = []) => {
     const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
     const pageWidth = doc.internal.pageSize.width;
+    const logoData = await loadLogoBase64();
 
     const formatDate = (d: string) => {
         if (!d) return '';
@@ -15,6 +17,7 @@ export const generateTimeSheetPDF = (header: HR_TimeSheetHeader, logs: HR_TimeSh
     };
 
     // --- HEADER ---
+    addLogoToPDF(doc, logoData, pageWidth);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
     doc.text("CASA FAMILIAR", pageWidth / 2, 15, { align: 'center' });

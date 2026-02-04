@@ -298,6 +298,7 @@ export const TimeSheetService = {
                 credentials: 'include',
                 body: JSON.stringify({
                     status: 'Rejected',
+                    additional_info: reason, // Save the rejection reason!
                     supervisor_signed_by: '',
                     employee_signed_by: '',
                     employee_signed_date: ''
