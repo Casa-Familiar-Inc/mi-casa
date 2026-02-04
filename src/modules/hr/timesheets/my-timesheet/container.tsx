@@ -110,14 +110,14 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             // For now, load Open + Current (if viewing). 
             // Simplest: Load All for now, or Open. 
             // If employee, they can only create for Open.
-            const periodsData = await TimeSheetService.getPayPeriods('Open'); 
+            const periodsData = await TimeSheetService.getPayPeriods('Open');
             const periodsList = periodsData.map((p: any) => ({
                 key: p.id, // Using ID as key
                 label: p.name,
                 start: p.start_date,
                 end: p.end_date
             }));
-            
+
             setPeriods(periodsList);
 
             // 2. Load Settings
@@ -162,9 +162,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                 // DEFAULT LOAD (Current Period)
                 // Default to the first open period?
                 if (periodsList.length > 0) {
-                     const current = periodsList[0];
-                     setSelectedPeriodKey(current.key);
-                     await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end);
+                    const current = periodsList[0];
+                    setSelectedPeriodKey(current.key);
+                    await loadTimeSheet(userEmail || currentUserEmail, current.start, current.end);
                 } else {
                     toast.warning("No Open Pay Periods Found. Please contact HR.");
                 }
@@ -575,7 +575,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
             toast.error("No timesheet data to export");
             return;
         }
-        generateTimeSheetPDF(header, logs);
+        generateTimeSheetPDF(header, logs, compTimeEntries);
         toast.success("PDF Exported");
     };
 
@@ -614,34 +614,34 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
         }
 
         const newLogs = logs.map(log => {
-             // Skip if locked (TimeOff / Holiday)
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             if ((log as any).is_timeoff_locked || (log as any).is_company_locked) return log;
-             
-             // Skip Weekends (Sat/Sun) for auto-fill default
-             const d = new Date(log.date.includes('T') ? log.date : log.date + 'T00:00:00');
-             if (d.getDay() === 0 || d.getDay() === 6) return log;
+            // Skip if locked (TimeOff / Holiday)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if ((log as any).is_timeoff_locked || (log as any).is_company_locked) return log;
 
-             // Don't overwrite if leave exists
-             const hasLeave = ['wd','vac','hol','sick','ber','ot','jury','unpd'].some(k => Number((log as any)[k]) > 0);
-             if (hasLeave) return log;
+            // Skip Weekends (Sat/Sun) for auto-fill default
+            const d = new Date(log.date.includes('T') ? log.date : log.date + 'T00:00:00');
+            if (d.getDay() === 0 || d.getDay() === 6) return log;
 
-             const tIn = userSettings.default_time_in || '';
-             const lOut = userSettings.default_lunch_out || '';
-             const lIn = userSettings.default_lunch_in || '';
-             const tOut = userSettings.default_time_out || '';
+            // Don't overwrite if leave exists
+            const hasLeave = ['wd', 'vac', 'hol', 'sick', 'ber', 'ot', 'jury', 'unpd'].some(k => Number((log as any)[k]) > 0);
+            if (hasLeave) return log;
 
-             const totalStr = TimeUtils.calculateDailyTotal(tIn, lOut, lIn, tOut);
-             
-             return {
-                 ...log,
-                 time_in: tIn,
-                 lunch_out: lOut,
-                 lunch_in: lIn,
-                 time_out: tOut,
-                 reg_hours: parseFloat(totalStr),
-                 daily_total: parseFloat(totalStr)
-             };
+            const tIn = userSettings.default_time_in || '';
+            const lOut = userSettings.default_lunch_out || '';
+            const lIn = userSettings.default_lunch_in || '';
+            const tOut = userSettings.default_time_out || '';
+
+            const totalStr = TimeUtils.calculateDailyTotal(tIn, lOut, lIn, tOut);
+
+            return {
+                ...log,
+                time_in: tIn,
+                lunch_out: lOut,
+                lunch_in: lIn,
+                time_out: tOut,
+                reg_hours: parseFloat(totalStr),
+                daily_total: parseFloat(totalStr)
+            };
         });
 
         setLogs(newLogs);
@@ -852,7 +852,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                         {!isSupervisorView && (header?.status === 'Draft' || header?.status === 'Rejected' || !header?.status) && (
                             <>
                                 <Button variant="outline" onClick={handleAutoFill} className="mr-2 border-dashed">
-                                    <Clock className="w-4 h-4 mr-1"/> Auto-Fill
+                                    <Clock className="w-4 h-4 mr-1" /> Auto-Fill
                                 </Button>
                                 <Button variant="outline" onClick={() => handleSave('Draft')}>Save Draft</Button>
                                 <Button onClick={() => handleSave('Submitted')}>Sign & Submit</Button>
@@ -881,14 +881,14 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     <div className="text-sm font-semibold">Employee: <span className="font-normal">{header?.employee_name || (isSupervisorView ? (userEmail || 'Loading...') : currentUserName)}</span></div>
                     <div className="text-sm font-semibold">Status: <span className={`font-normal ${header?.status === 'Approved' ? 'text-green-600' : ''}`}>{header?.status || 'Draft'}</span></div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
-                     <span className="text-sm font-medium">Pay Period:</span>
-                     <Select value={selectedPeriodKey} onValueChange={async (val) => {
+                    <span className="text-sm font-medium">Pay Period:</span>
+                    <Select value={selectedPeriodKey} onValueChange={async (val) => {
                         setSelectedPeriodKey(val);
                         const p = periods.find(x => x.key === val);
-                        if(p) await loadTimeSheet(userEmail || currentUserEmail, p.start, p.end);
-                     }}>
+                        if (p) await loadTimeSheet(userEmail || currentUserEmail, p.start, p.end);
+                    }}>
                         <SelectTrigger className="w-[250px]">
                             <SelectValue placeholder="Select Period" />
                         </SelectTrigger>
@@ -899,7 +899,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                 </SelectItem>
                             ))}
                         </SelectContent>
-                     </Select>
+                    </Select>
                 </div>
             </div>
 
