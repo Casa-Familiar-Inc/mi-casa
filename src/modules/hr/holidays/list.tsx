@@ -82,23 +82,23 @@ export const HolidayList: React.FC = () => {
 
     const conceptLabels: Record<string, string> = {
         HOL: 'Holiday',
-        VAC: 'Company Vacation',
+        VAC: 'Casa Vacation',
         WD: 'Wellness Day'
     };
 
     return (
         <div className="p-6 w-full mx-auto space-y-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-2xl font-bold">Company Calendar</h1>
+                <h1 className="text-2xl font-bold">Casa Calendar</h1>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                         <Button className="gap-2">
-                            <Plus className="h-4 w-4" /> Add Company Date
+                            <Plus className="h-4 w-4" /> Add Casa Date
                         </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
                         <DialogHeader>
-                            <DialogTitle>Add Company Off-Day</DialogTitle>
+                            <DialogTitle>Add Casa Off-Day</DialogTitle>
                             <DialogDescription>
                                 This date will be automatically applied to all employee timesheets.
                             </DialogDescription>
@@ -133,8 +133,8 @@ export const HolidayList: React.FC = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="HOL">Holiday (Paid)</SelectItem>
-                                        <SelectItem value="VAC">Company Vacation</SelectItem>
-                                        <SelectItem value="WD">Wellness Day (Company-wide)</SelectItem>
+                                        <SelectItem value="VAC">Casa Vacation</SelectItem>
+                                        <SelectItem value="WD">Wellness Day (Casa-wide)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -166,7 +166,7 @@ export const HolidayList: React.FC = () => {
                         <div className="text-center py-10">Loading calendar...</div>
                     ) : holidays.length === 0 ? (
                         <div className="text-center py-10 text-muted-foreground italic border border-dashed rounded-lg">
-                            No company dates configured yet.
+                            No Casa dates configured yet.
                         </div>
                     ) : (
                         <Table>

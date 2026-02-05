@@ -86,12 +86,6 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
 
     const isOwner = useMemo(() => {
         const owner = !formData.employee_email || (identity?.email && formData.employee_email && identity.email.toLowerCase() === formData.employee_email.toLowerCase());
-        console.log("[TimeOff] isOwner Check:", {
-            identityEmail: identity?.email,
-            formEmail: formData.employee_email,
-            isOwner: !!owner,
-            status: formData.status
-        });
         return !!owner;
     }, [identity?.email, formData.employee_email, formData.status]);
 

@@ -978,7 +978,7 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                                                                 <Calendar className="h-3 w-3 text-blue-500 cursor-help" />
                                                             </TooltipTrigger>
                                                             <TooltipContent>
-                                                                <p>Company Holiday: {holidayName}</p>
+                                                                <p>Casa Calendar Event: {holidayName}</p>
                                                             </TooltipContent>
                                                         </Tooltip>
                                                     </TooltipProvider>

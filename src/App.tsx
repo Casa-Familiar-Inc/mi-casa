@@ -200,7 +200,7 @@ function App() {
       name: "CompanyCalendar",
       list: "/hr/holidays",
       meta: {
-        label: "Company Calendar",
+        label: "Casa Calendar",
         parent: "HR",
         icon: <Calendar className="h-4 w-4" />
       }
