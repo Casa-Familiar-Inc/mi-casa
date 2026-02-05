@@ -1,5 +1,4 @@
-const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
-const API_URL = `${API_BASE}/employees`; // The backend route is /api/employees for user mgmt
+import { api } from "../lib/api";
 
 export interface User {
     id: string;
@@ -12,9 +11,8 @@ export interface User {
 export const UserService = {
     async getAllUsers(): Promise<User[]> {
         try {
-            const response = await fetch(API_URL, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/employees');
+            return response.data;
         } catch (error) {
             console.error("Error fetching users:", error);
             return [];

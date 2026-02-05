@@ -8,8 +8,7 @@ import {
 import { AuditService } from "./AuditService";
 import { authClient } from "../lib/auth";
 import { useAuthStore } from "../stores/authStore";
-
-const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
+import { api } from "../lib/api";
 
 export const TimeSheetService = {
 
@@ -23,15 +22,11 @@ export const TimeSheetService = {
 
         if (headerId) {
             try {
-                const response = await fetch(`${API_BASE}/timesheets/${headerId}`, { credentials: 'include' });
-                if (response.ok) {
-                    const old = await response.json();
-                    oldStatus = old.status;
-                }
+                const response = await api.get(`/timesheets/${headerId}`);
+                oldStatus = response.data.status;
             } catch (e) { /* ignore */ }
         }
 
-        // The new backend should handle the batch/atomic operation in a single endpoint
         const { header, logs, compTime } = data;
         const payload = {
             ...header,
@@ -40,39 +35,38 @@ export const TimeSheetService = {
             employee_email: userEmail
         };
 
-        const response = await fetch(`${API_BASE}/timesheets${headerId ? `/${headerId}` : ''}`, {
-            method: headerId ? "PATCH" : "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: 'include',
-            body: JSON.stringify(payload),
-        });
+        const method = headerId ? 'patch' : 'post';
+        const url = headerId ? `/timesheets/${headerId}` : '/timesheets';
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.message || "Failed to save timesheet");
+        try {
+            const response = await api[method](url, payload);
+            const savedId = response.data.id || headerId;
+
+            const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
+
+            AuditService.log({
+                target_collection: 'HR_TimeSheetHeaders',
+                target_id: savedId,
+                action_type: action,
+                details: { status: data.header.status, user_email: userEmail }
+            }).catch(console.error);
+
+            return savedId;
+        } catch (error: any) {
+            throw new Error(error.response?.data?.message || "Failed to save timesheet");
         }
-
-        const result = await response.json();
-        const savedId = result.id || headerId;
-
-        const action = isNew ? 'CREATE' : (data.header.status === 'Submitted' && oldStatus !== 'Submitted' ? 'SUBMIT' : 'UPDATE');
-
-        AuditService.log({
-            target_collection: 'HR_TimeSheetHeaders',
-            target_id: savedId,
-            action_type: action,
-            details: { status: data.header.status, user_email: userEmail }
-        }).catch(console.error);
-
-        return savedId;
     },
 
     async getTimeSheet(employeeEmail: string, periodStart: string): Promise<TimeSheetFull | null> {
         try {
-            const response = await fetch(`${API_BASE}/timesheets?employee_email=${employeeEmail}&period_start=${periodStart}`, { credentials: 'include' });
-            if (!response.ok) return null;
-            const items = await response.json();
-            return items.length > 0 ? items[0] : null; // Backend should return expanded object
+            const response = await api.get('/timesheets', {
+                params: {
+                    employee_email: employeeEmail,
+                    period_start: periodStart
+                }
+            });
+            const items = response.data;
+            return items.length > 0 ? items[0] : null;
         } catch (error) {
             console.error("Error fetching timesheet:", error);
             return null;
@@ -81,9 +75,8 @@ export const TimeSheetService = {
 
     async getMyTimeSheets(): Promise<HR_TimeSheetHeader[]> {
         try {
-            const response = await fetch(`${API_BASE}/timesheets/my`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/timesheets/my');
+            return response.data;
         } catch (error) {
             console.error("Error fetching my timesheets:", error);
             return [];
@@ -97,25 +90,17 @@ export const TimeSheetService = {
         }
 
         try {
-            const response = await fetch(`${API_BASE}/timesheets`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({
-                    employee_email: email,
-                    employee_name: user,
-                    period_start: start,
-                    period_end: end,
-                    pay_period_id: payPeriodId,
-                    status: 'Draft',
-                    total_hours: 0,
-                }),
+            const response = await api.post('/timesheets', {
+                employee_email: email,
+                employee_name: user,
+                period_start: start,
+                period_end: end,
+                pay_period_id: payPeriodId,
+                status: 'Draft',
+                total_hours: 0,
             });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || "Failed to create timesheet");
-            }
-            const header = await response.json();
+
+            const header = response.data;
 
             await AuditService.log({
                 target_collection: 'HR_TimeSheetHeaders',
@@ -125,17 +110,16 @@ export const TimeSheetService = {
             });
 
             return header.id;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error ensuring timesheet:", error);
-            throw error;
+            throw new Error(error.response?.data?.message || "Failed to ensure timesheet");
         }
     },
 
     async getTimeSheetById(id: string): Promise<TimeSheetFull | null> {
         try {
-            const response = await fetch(`${API_BASE}/timesheets/${id}`, { credentials: 'include' });
-            if (!response.ok) return null;
-            return await response.json();
+            const response = await api.get(`/timesheets/${id}`);
+            return response.data;
         } catch (error) {
             console.error("Error fetching timesheet by ID:", error);
             return null;
@@ -144,9 +128,7 @@ export const TimeSheetService = {
 
     async getSubmittedTimeSheets(statuses: string[] = ['Submitted'], page = 1, limit = 50): Promise<HR_TimeSheetHeader[]> {
         try {
-            // Try to get from Store first to avoid network call
             let directReports: string[] = [];
-
             try {
                 const state = useAuthStore.getState();
                 if (state.directReports && state.directReports.length > 0) {
@@ -154,7 +136,6 @@ export const TimeSheetService = {
                 }
             } catch (e) { /* ignore */ }
 
-            // If store is empty (edge case), try session but only if really needed
             if (directReports.length === 0) {
                 const { data: session } = await authClient.getSession();
                 directReports = (session?.user as any)?.directReports || [];
@@ -168,16 +149,21 @@ export const TimeSheetService = {
                 }
             }
 
-
-
             if (!Array.isArray(directReports) || directReports.length === 0) return [];
 
-            const statusQuery = statuses.map(s => `status=${s}`).join('&');
-            const reportsQuery = directReports.map(email => `employee_email=${email}`).join('&');
+            // Helper to build params for arrays (axios handles arrays as name[] usually, but backend expects single keys? 
+            // Hono `c.req.queries()` handles multiple keys nicely if standard query params.
+            // Let's use URLSearchParams or simple construction for safety akin to original implementation)
 
-            const response = await fetch(`${API_BASE}/timesheets?${statusQuery}&${reportsQuery}&_sort=-period_start&_page=${page}&_per_page=${limit}`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const params = new URLSearchParams();
+            statuses.forEach(s => params.append('status', s));
+            directReports.forEach(e => params.append('employee_email', e));
+            params.append('_sort', '-period_start');
+            params.append('_page', String(page));
+            params.append('_per_page', String(limit));
+
+            const response = await api.get('/timesheets', { params });
+            return response.data;
         } catch (error) {
             console.error("Error fetching submitted timesheets:", error);
             return [];
@@ -186,9 +172,14 @@ export const TimeSheetService = {
 
     async getAllTimeSheets(start: string, end: string): Promise<HR_TimeSheetHeader[]> {
         try {
-            const response = await fetch(`${API_BASE}/timesheets?period_start_gte=${start}&period_start_lte=${end}&_sort=employee_name`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/timesheets', {
+                params: {
+                    period_start_gte: start,
+                    period_start_lte: end,
+                    _sort: 'employee_name'
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching all timesheets:", error);
             return [];
@@ -197,9 +188,10 @@ export const TimeSheetService = {
 
     async getUserSettings(email: string): Promise<HR_EmployeeSettings | null> {
         try {
-            const response = await fetch(`${API_BASE}/employees/settings?user_email=${email}`, { credentials: 'include' });
-            if (!response.ok) return null;
-            const items = await response.json();
+            const response = await api.get('/employees/settings', {
+                params: { user_email: email }
+            });
+            const items = response.data;
             return items.length > 0 ? items[0] : null;
         } catch (error) {
             return null;
@@ -209,13 +201,10 @@ export const TimeSheetService = {
     async saveUserSettings(settings: HR_EmployeeSettings): Promise<void> {
         try {
             const existing = await this.getUserSettings(settings.user_email);
-            const response = await fetch(`${API_BASE}/employees/settings${existing ? `/${existing.id}` : ''}`, {
-                method: existing ? "PATCH" : "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify(settings),
-            });
-            if (!response.ok) throw new Error("Failed to save settings");
+            const url = existing ? `/employees/settings/${existing.id}` : '/employees/settings';
+            const method = existing ? 'patch' : 'post';
+
+            await api[method](url, settings);
         } catch (error) {
             console.error("Error saving user settings:", error);
             throw error;
@@ -224,28 +213,19 @@ export const TimeSheetService = {
 
     async updateTimeSheet(id: string, updates: Partial<TimeSheetFull>): Promise<void> {
         try {
-            await fetch(`${API_BASE}/timesheets/${id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify(updates),
-            });
+            await api.patch(`/timesheets/${id}`, updates);
         } catch (error) {
             console.error("Error updating timesheet:", error);
             throw error;
         }
     },
 
-    // --- PAY PERIODS ---
-
     async getPayPeriods(status?: 'Open' | 'Closed'): Promise<{ id: string, name: string, start_date: string, end_date: string, status: string }[]> {
         try {
-            const url = status
-                ? `${API_BASE}/pay-periods?status=${status}`
-                : `${API_BASE}/pay-periods`;
-            const response = await fetch(url, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/pay-periods', {
+                params: status ? { status } : {}
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching pay periods:", error);
             return [];
@@ -254,14 +234,8 @@ export const TimeSheetService = {
 
     async createPayPeriod(name: string, start: string, end: string): Promise<any> {
         try {
-            const response = await fetch(`${API_BASE}/pay-periods`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({ name, start_date: start, end_date: end }),
-            });
-            if (!response.ok) throw new Error("Failed to create period");
-            return await response.json();
+            const response = await api.post('/pay-periods', { name, start_date: start, end_date: end });
+            return response.data;
         } catch (error) {
             console.error(error);
             throw error;
@@ -270,15 +244,10 @@ export const TimeSheetService = {
 
     async approveTimeSheet(headerId: string, supervisorName: string): Promise<void> {
         try {
-            await fetch(`${API_BASE}/timesheets/${headerId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({
-                    status: 'Approved',
-                    supervisor_signed_by: supervisorName,
-                    supervisor_signed_date: new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16)
-                }),
+            await api.patch(`/timesheets/${headerId}`, {
+                status: 'Approved',
+                supervisor_signed_by: supervisorName,
+                supervisor_signed_date: new Date().toISOString().replace('T', ' ').split('.')[0].slice(0, 16)
             });
 
             await AuditService.log({
@@ -296,17 +265,12 @@ export const TimeSheetService = {
 
     async rejectTimeSheet(headerId: string, reason: string): Promise<void> {
         try {
-            await fetch(`${API_BASE}/timesheets/${headerId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({
-                    status: 'Rejected',
-                    additional_info: reason, // Save the rejection reason!
-                    supervisor_signed_by: '',
-                    employee_signed_by: '',
-                    employee_signed_date: ''
-                }),
+            await api.patch(`/timesheets/${headerId}`, {
+                status: 'Rejected',
+                additional_info: reason,
+                supervisor_signed_by: '',
+                employee_signed_by: '',
+                employee_signed_date: ''
             });
 
             await AuditService.log({

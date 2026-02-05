@@ -43,6 +43,7 @@ import { Settings, Download, Calendar, Clock, Info, AlertCircle } from 'lucide-r
 import { ActionToolbar } from '@/components/common/ActionToolbar';
 import { sendGraphEmail, getManagerProfile } from '../../../../utils/graphEmail';
 import { authClient } from '../../../../lib/auth';
+import { api } from '@/lib/api'; // Added import
 
 interface TimeSheetContainerProps {
     userEmail?: string;
@@ -438,8 +439,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours, // Update totals
                     additional_info: additionalInfo,
                     employee_signed_by: isEmployeeSigning ? user : header.employee_signed_by,
-                    // REMOVED: employee_signed_date (Backend handles this now)
+                    employee_signed_date: header.employee_signed_date, // Preserve existing
                     // IMPORTANT: Do NOT touch employee_email here. It's already in `header`.
+                    supervisor_signed_date: header.supervisor_signed_date, // Preserve existing
                 };
             } else {
                 // Create new
@@ -458,9 +460,9 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
                     total_hours: totalHours,
                     additional_info: additionalInfo,
                     employee_signed_by: status === 'Submitted' ? user : '',
-                    // REMOVED: employee_signed_date (Backend handles this now)
+                    employee_signed_date: '', // Handled by backend, but required by type
                     supervisor_signed_by: '',
-                    // REMOVED: supervisor_signed_date
+                    supervisor_signed_date: '', // Handled by backend, but required by type
                     pay_period_id: p?.key || undefined // Pass the ID
                 };
             }
@@ -732,15 +734,10 @@ export const TimeSheetContainer: React.FC<TimeSheetContainerProps> = ({ userEmai
     const handleSupervisorReopen = async () => {
         if (!header) return;
         try {
-            await fetch(`${import.meta.env.VITE_API_URL}/api/timesheets/${header.id}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({
-                    status: 'Submitted',
-                    supervisor_signed_by: '',
-                    supervisor_signed_date: ''
-                }),
+            await api.patch(`/timesheets/${header.id}`, {
+                status: 'Submitted',
+                supervisor_signed_by: '',
+                supervisor_signed_date: ''
             });
             toast.success("Timesheet Unlocked");
             // Reload page to reset state safely

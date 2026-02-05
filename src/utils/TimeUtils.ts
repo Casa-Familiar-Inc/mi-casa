@@ -1,82 +1,81 @@
+import { format, parse, differenceInMinutes, isValid, parseISO } from 'date-fns';
+
 export class TimeUtils {
+    /**
+     * Parses "HH:MM" string into decimal hours (e.g. "08:30" -> 8.5)
+     */
     public static parseTime(t: string): number {
         if (!t) return 0;
-        const parts = t.split(':');
-
-        const h = parseInt(parts[0], 10);
-        if (isNaN(h)) return 0;
-
-        if (parts.length < 2) return h; // Handle just hour
-
-        const m = parseInt(parts[1], 10);
-        if (isNaN(m)) return h;
-
-        return h + m / 60;
+        try {
+            const [hours, minutes] = t.split(':').map(Number);
+            if (isNaN(hours) || isNaN(minutes)) return 0;
+            return hours + (minutes / 60);
+        } catch (e) {
+            return 0;
+        }
     }
 
+    /**
+     * Calculates daily total hours between In/Out with Lunch deduction
+     * Inputs are "HH:MM" strings
+     */
     public static calculateDailyTotal(timeIn: string, lunchOut: string, lunchIn: string, timeOut: string): string {
-        let duration = 0;
-        if (timeIn && timeOut) {
-            const tIn = TimeUtils.parseTime(timeIn);
-            const tOut = TimeUtils.parseTime(timeOut);
+        try {
+            if (!timeIn || !timeOut) return "0.00";
 
-            // Handle overnight (e.g. 11 PM to 1 AM) - though unlikely for this use case, simple check:
-            // If out < in, assume next day? For now, standard day shift.
-            if (tOut >= tIn) {
-                duration = tOut - tIn;
-            }
+            const referenceDate = new Date(); // Use today as base for time parsing
+            const tIn = parse(timeIn, 'HH:mm', referenceDate);
+            const tOut = parse(timeOut, 'HH:mm', referenceDate);
+
+            if (!isValid(tIn) || !isValid(tOut)) return "0.00";
+
+            let minutes = differenceInMinutes(tOut, tIn);
 
             if (lunchOut && lunchIn) {
-                const lOut = TimeUtils.parseTime(lunchOut);
-                const lIn = TimeUtils.parseTime(lunchIn);
-                if (lIn >= lOut) {
-                    duration -= (lIn - lOut);
+                const lOut = parse(lunchOut, 'HH:mm', referenceDate);
+                const lIn = parse(lunchIn, 'HH:mm', referenceDate);
+
+                if (isValid(lOut) && isValid(lIn)) {
+                    const lunchMinutes = differenceInMinutes(lIn, lOut);
+                    minutes -= lunchMinutes;
                 }
             }
+
+            const total = Math.max(0, minutes / 60);
+            return total.toFixed(2);
+        } catch (e) {
+            console.error("Error calculating daily total", e);
+            return "0.00";
         }
-        return Math.max(0, duration).toFixed(2);
     }
+
     public static formatDisplayDateTime(d: string | undefined): string {
         if (!d) return '';
         try {
             const date = new Date(d);
-            if (isNaN(date.getTime())) return d;
-
-            // Format to "MMM dd, yyyy HH:mm"
-            return date.toLocaleString('en-US', {
-                month: 'short',
-                day: '2-digit',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: true
-            });
+            if (!isValid(date)) return d;
+            return format(date, 'MMM dd, yyyy hh:mm a');
         } catch (e) {
-            return d;
+            return d || '';
         }
     }
 
     public static formatDisplayDate(d: string | undefined): string {
         if (!d) return '';
         try {
-            // Assume input is YYYY-MM-DD for consistency
-            // If strictly YYYY-MM-DD
+            // Check if YYYY-MM-DD pattern to avoid timezone shifts with new Date(string)
             if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
-                const [y, m, dPart] = d.split('-');
-                return `${m}/${dPart}/${y}`;
+                const [y, m, day] = d.split('-').map(Number);
+                // Create with local time components to preserve the date
+                const date = new Date(y, m - 1, day);
+                return format(date, 'MM/dd/yyyy');
             }
 
-            // Fallback for full ISO strings or others
-            const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
-            if (isNaN(date.getTime())) return d;
-
-            return date.toLocaleDateString('en-US', {
-                month: '2-digit',
-                day: '2-digit',
-                year: 'numeric'
-            });
+            const date = new Date(d);
+            if (!isValid(date)) return d;
+            return format(date, 'MM/dd/yyyy');
         } catch (e) {
-            return d;
+            return d || '';
         }
     }
 }

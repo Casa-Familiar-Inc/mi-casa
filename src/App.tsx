@@ -1,14 +1,4 @@
-import { Authenticated, GitHubBanner, Refine } from "@refinedev/core";
-import {
-  LayoutDashboard,
-  Tags,
-  Factory,
-  Users,
-  Clock,
-  ShieldAlert,
-  Calendar,
-  Building
-} from "lucide-react";
+import { Authenticated, Refine } from "@refinedev/core";
 import { DevtoolsPanel, DevtoolsProvider } from "@refinedev/devtools";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
 
@@ -45,12 +35,14 @@ import { HolidayList } from "./modules/hr/holidays/list";
 import { DepartmentsList } from "./modules/admin/departments";
 import { HRAuditDashboard } from "./modules/hr/audit/HRAuditDashboard";
 
-import { useState, useEffect, useMemo } from "react";
-import { authClient } from "./lib/auth";
+import { useMemo } from "react";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 import { useAuthStore } from "./stores/authStore";
 import axios from "axios";
 import { defineAbilityFor } from "./auth/ability";
+
+import { useSessionSync } from "./hooks/useSessionSync";
+import { resources } from "./config/resources";
 
 const API_URL = import.meta.env.VITE_API_URL + "/api";
 
@@ -58,164 +50,10 @@ const axiosInstance = axios.create();
 axiosInstance.defaults.withCredentials = true;
 
 function App() {
-  // const [isSupervisor, setIsSupervisor] = useState(false); // Replaced by Zustand
-  const { isSupervisor, setAuthData, clearAuthData, allowedScreens, userRole, directReports, userId } = useAuthStore();
-  const { data: session } = authClient.useSession();
+  // Use the custom hook for session synchronization
+  useSessionSync();
 
-  useEffect(() => {
-    if (session?.user) {
-      const user = session.user as any;
-
-      let hasReports = false;
-      let reports = user.directReports;
-
-      if (typeof reports === 'string') {
-        try {
-          reports = JSON.parse(reports);
-        } catch (e) {
-          reports = [];
-        }
-      }
-
-      if (Array.isArray(reports) && reports.length > 0) {
-        hasReports = true;
-      }
-
-      const isSup = !!user.isSupervisor || hasReports;
-      const role = user.role || 'user';
-
-      // Robust screens extraction (handling both snake_case and camelCase)
-      const rawScreens = user.allowedScreens || user.allowed_screens;
-      let screens: string[] = [];
-
-      if (rawScreens) {
-        if (Array.isArray(rawScreens)) {
-          screens = rawScreens;
-        } else if (typeof rawScreens === 'string') {
-          try {
-            screens = JSON.parse(rawScreens);
-          } catch (e) {
-            console.error("[App] Failed to parse screens string:", e);
-            screens = [];
-          }
-        }
-      }
-
-      // Update Store (Auto-persists)
-      setAuthData({
-        isSupervisor: isSup,
-        directReports: reports,
-        userRole: role,
-        userId: user.id || null,
-        allowedScreens: screens
-      });
-
-    } else {
-      clearAuthData();
-    }
-  }, [session, setAuthData, clearAuthData]);
-
-  const resources = [
-    {
-      name: "dashboard",
-      list: "/",
-      meta: {
-        label: "Dashboard",
-        icon: <LayoutDashboard className="h-4 w-4" />
-      }
-    },
-    {
-      name: "employees", // User Management
-      list: "/admin/users",
-      meta: {
-        label: "Employees",
-        icon: <Users className="h-4 w-4" />
-      }
-    },
-    {
-      name: "it-category",
-      list: "/it-category",
-      create: "/it-category/create",
-      edit: "/it-category/edit/:id",
-      show: "/it-category/show/:id",
-      meta: {
-        label: "IT Categories",
-        icon: <Tags className="h-4 w-4" />
-      }
-    },
-    {
-      name: "it-manufacturer",
-      list: "/it-manufacturer",
-      meta: {
-        label: "IT Manufacturers",
-        icon: <Factory className="h-4 w-4" />
-      }
-    },
-    {
-      name: "departments",
-      list: "/admin/departments",
-      meta: {
-        label: "Departments",
-        icon: <Building className="h-4 w-4" />
-      }
-    },
-    {
-      name: "HR",
-      meta: {
-        label: "HR",
-        icon: <Users className="h-4 w-4" />
-      }
-    },
-    {
-      name: "TimeSheets",
-      list: "/timesheets",
-      create: "/timesheets/entry",
-      meta: {
-        label: "My TimeSheet",
-        parent: "HR",
-        icon: <Clock className="h-4 w-4" />
-      },
-    },
-    {
-      name: "TimeOff",
-      list: "/hr/time-off",
-      create: "/hr/time-off/new",
-      meta: {
-        label: "Time Off Request",
-        parent: "HR",
-        icon: <Calendar className="h-4 w-4" />
-      },
-    },
-
-    {
-      name: "Supervisor",
-      list: "/supervisor",
-      meta: {
-        label: "Supervisor Dashboard",
-        parent: "HR",
-        icon: <ShieldAlert className="h-4 w-4" />
-      }
-    },
-    {
-      name: "CompanyCalendar",
-      list: "/hr/holidays",
-      meta: {
-        label: "Casa Calendar",
-        parent: "HR",
-        icon: <Calendar className="h-4 w-4" />
-      }
-    },
-    {
-      name: "HRAudit",
-      list: "/hr/audit",
-      meta: {
-        label: "Audit & Reports",
-        parent: "HR",
-        icon: <ShieldAlert className="h-4 w-4" />
-      }
-    }
-  ];
-
+  const { isSupervisor, allowedScreens, userRole, directReports, userId } = useAuthStore();
 
   // Memoize the ability for performance (Best Practice)
   const ability = useMemo(() => {
@@ -240,6 +78,7 @@ function App() {
               routerProvider={routerProvider}
               resources={resources}
               accessControlProvider={{
+                // ... (rest of code)
                 can: async ({ resource, action, params }) => {
                   const act = action || 'list';
 

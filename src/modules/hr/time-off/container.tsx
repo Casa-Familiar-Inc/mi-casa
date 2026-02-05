@@ -35,6 +35,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog";
 import { useAuthStore } from '../../../stores/authStore';
+import { api } from '@/lib/api'; // Added import
 
 interface TimeOffContainerProps {
     requestId?: string;
@@ -110,12 +111,11 @@ export const TimeOffContainer: React.FC<TimeOffContainerProps> = ({ requestId })
                 let deptName = '';
                 if (identity.departmentId) {
                     try {
-                        const res = await fetch(`${import.meta.env.VITE_API_URL}/api/organization/departments`, { credentials: 'include' });
-                        if (res.ok) {
-                            const depts = await res.json();
-                            const matches = depts.find((d: any) => d.id === identity.departmentId);
-                            if (matches) deptName = matches.name;
-                        }
+                        const res = await api.get('/organization/departments');
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const depts: any[] = res.data;
+                        const matches = depts.find((d: any) => d.id === identity.departmentId);
+                        if (matches) deptName = matches.name;
                     } catch (e) {
                         console.error("Failed to fetch department info", e);
                     }

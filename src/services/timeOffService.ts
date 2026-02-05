@@ -1,8 +1,6 @@
 import { HR_TimeOffRequest } from "../types/timeoff";
 import { AuditService } from "./AuditService";
-
-const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
-const API_URL = `${API_BASE}/time-off`;
+import { api } from "../lib/api";
 
 export const TimeOffService = {
     async saveRequest(data: Partial<HR_TimeOffRequest>, userEmail: string): Promise<string> {
@@ -12,41 +10,28 @@ export const TimeOffService = {
 
         if (requestId) {
             try {
-                const response = await fetch(`${API_URL}/${requestId}`, { credentials: 'include' });
-                if (response.ok) {
-                    const old = await response.json();
-                    oldStatus = old.status;
-                }
+                const response = await api.get(`/time-off/${requestId}`);
+                oldStatus = response.data.status;
             } catch (e) { /* ignore */ }
 
-            const response = await fetch(`${API_URL}/${requestId}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify(data),
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || JSON.stringify(err.errors) || "Failed to update request");
+            try {
+                await api.patch(`/time-off/${requestId}`, data);
+            } catch (error: any) {
+                throw new Error(error.response?.data?.message || JSON.stringify(error.response?.data?.errors) || "Failed to update request");
             }
         } else {
             isNew = true;
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify({
+            try {
+                const response = await api.post('/time-off', {
                     ...data,
                     employee_email: userEmail,
                     status: data.status || 'Draft'
-                }),
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || JSON.stringify(err.errors) || "Failed to save request");
+                });
+                const record = response.data;
+                requestId = record.id;
+            } catch (error: any) {
+                throw new Error(error.response?.data?.message || JSON.stringify(error.response?.data?.errors) || "Failed to save request");
             }
-            const record = await response.json();
-            requestId = record.id;
         }
 
         const action = isNew ? 'CREATE' : (data.status === 'Pending' && oldStatus !== 'Pending' ? 'SUBMIT' : 'UPDATE');
@@ -63,11 +48,14 @@ export const TimeOffService = {
 
     async getSupervisorHistory(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
         try {
-            // Fetch requests with Approved or Rejected status
-            // The backend controller now filters this to only direct reports if the user is a supervisor
-            const response = await fetch(`${API_URL}?status=Approved&status=Rejected&_page=${page}&_per_page=${limit}`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/time-off', {
+                params: {
+                    status: ['Approved', 'Rejected'],
+                    _page: page,
+                    _per_page: limit
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching supervisor history:", error);
             return [];
@@ -76,9 +64,8 @@ export const TimeOffService = {
 
     async getRequestById(id: string): Promise<HR_TimeOffRequest | null> {
         try {
-            const response = await fetch(`${API_URL}/${id}`, { credentials: 'include' });
-            if (!response.ok) return null;
-            return await response.json();
+            const response = await api.get(`/time-off/${id}`);
+            return response.data;
         } catch (error) {
             console.error("Error fetching time off request by ID:", error);
             return null;
@@ -87,9 +74,13 @@ export const TimeOffService = {
 
     async getMyRequests(email: string): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}?employee_email=${email}&_sort=-created_at`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/time-off', {
+                params: {
+                    employee_email: email,
+                    _sort: '-created_at'
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching my time off requests:", error);
             return [];
@@ -98,9 +89,13 @@ export const TimeOffService = {
 
     async getPendingRequests(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}/pending?_page=${page}&_per_page=${limit}`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/time-off/pending', {
+                params: {
+                    _page: page,
+                    _per_page: limit
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching pending time off requests:", error);
             return [];
@@ -109,9 +104,15 @@ export const TimeOffService = {
 
     async getApprovedRequestsByPeriod(email: string, start: string, end: string): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}?status=Approved&employee_email=${email}&start_date_lte=${end}&end_date_gte=${start}`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/time-off', {
+                params: {
+                    status: 'Approved',
+                    employee_email: email,
+                    start_date_lte: end,
+                    end_date_gte: start
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching approved time off requests by period:", error);
             return [];
@@ -121,11 +122,16 @@ export const TimeOffService = {
     async getActiveRequestsByPeriod(email: string, start: string, end: string): Promise<HR_TimeOffRequest[]> {
         try {
             // Fetch Pending and Approved requests that overlap the range
-            const [pending, approved] = await Promise.all([
-                fetch(`${API_URL}?status=Pending&employee_email=${email}&start_date_lte=${end}&end_date_gte=${start}`, { credentials: 'include' }).then(r => r.ok ? r.json() : []),
-                fetch(`${API_URL}?status=Approved&employee_email=${email}&start_date_lte=${end}&end_date_gte=${start}`, { credentials: 'include' }).then(r => r.ok ? r.json() : [])
+            // Axios requests can be concurrent
+            const [pendingRes, approvedRes] = await Promise.all([
+                api.get('/time-off', {
+                    params: { status: 'Pending', employee_email: email, start_date_lte: end, end_date_gte: start }
+                }).catch(() => ({ data: [] })),
+                api.get('/time-off', {
+                    params: { status: 'Approved', employee_email: email, start_date_lte: end, end_date_gte: start }
+                }).catch(() => ({ data: [] }))
             ]);
-            return [...pending, ...approved];
+            return [...pendingRes.data, ...approvedRes.data];
         } catch (error) {
             console.error("Error fetching active time off requests by period:", error);
             return [];
@@ -134,9 +140,14 @@ export const TimeOffService = {
 
     async getAllRequestsByPeriod(start: string, end: string): Promise<HR_TimeOffRequest[]> {
         try {
-            const response = await fetch(`${API_URL}?start_date_lte=${end}&end_date_gte=${start}&_sort=employee_name`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/time-off', {
+                params: {
+                    start_date_lte: end,
+                    end_date_gte: start,
+                    _sort: 'employee_name'
+                }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching all time off requests by period:", error);
             return [];
@@ -145,37 +156,21 @@ export const TimeOffService = {
 
     async deleteRequest(id: string): Promise<boolean> {
         try {
-            const response = await fetch(`${API_URL}/${id}`, {
-                method: "DELETE",
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || "Failed to delete request");
-            }
+            await api.delete(`/time-off/${id}`);
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error deleting time off request:", error);
-            throw error;
+            throw new Error(error.response?.data?.message || "Failed to delete request");
         }
     },
 
     async updateStatus(id: string, status: string, comments?: string, role: string = 'Supervisor'): Promise<boolean> {
         try {
-            const response = await fetch(`${API_URL}/${id}/status`, {
-                method: "PATCH",
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status, comments, role }),
-                credentials: 'include'
-            });
-            if (!response.ok) {
-                const err = await response.json();
-                throw new Error(err.message || "Failed to update status");
-            }
+            await api.patch(`/time-off/${id}/status`, { status, comments, role });
             return true;
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error updating time off status:", error);
-            throw error;
+            throw new Error(error.response?.data?.message || "Failed to update status");
         }
     }
 };

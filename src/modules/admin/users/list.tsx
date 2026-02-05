@@ -3,6 +3,8 @@ import React from 'react';
 import { useNavigation, useLogout, CanAccess } from "@refinedev/core";
 import { RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/lib/api"; // Added import
+
 import {
     Table,
     TableBody,
@@ -44,33 +46,16 @@ export const UserList: React.FC = () => {
     const fetchUsers = async () => {
         setIsLoading(true);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/employees`, {
-                credentials: 'include'
-            });
-            if (res.ok) {
-                const data = await res.json();
-                setUsers(Array.isArray(data) ? data : []);
-            } else {
-                console.error("Failed to fetch users", res.status);
-            }
+            const res = await api.get('/employees');
+            setUsers(Array.isArray(res.data) ? res.data : []);
 
             // Fetch Departments
-            const resDepts = await fetch(`${import.meta.env.VITE_API_URL}/api/organization/departments`, {
-                credentials: 'include'
-            });
-            if (resDepts.ok) {
-                const data = await resDepts.json();
-                setDepartments(data);
-            }
+            const resDepts = await api.get('/organization/departments');
+            setDepartments(resDepts.data);
 
             // Fetch Screens
-            const resScreens = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/screens`, {
-                credentials: 'include'
-            });
-            if (resScreens.ok) {
-                const data = await resScreens.json();
-                setAvailableScreens(data);
-            }
+            const resScreens = await api.get('/employees/screens');
+            setAvailableScreens(resScreens.data);
 
         } catch (e) {
             console.error("Error fetching users", e);
@@ -94,15 +79,8 @@ export const UserList: React.FC = () => {
     const handleSync = async () => {
         setIsSyncing(true);
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/sync`, {
-                method: 'POST',
-                credentials: 'include'
-            });
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.message || "Sync failed");
-            }
-            const data = await res.json();
+            const res = await api.post('/employees/sync');
+            const data = res.data;
             toast.success(`Sync Complete: ${data.created} created, ${data.updated} updated.`);
             fetchUsers();
         } catch (error: any) {
@@ -128,13 +106,9 @@ export const UserList: React.FC = () => {
 
         // Fetch Employee Settings
         try {
-            const res = await fetch(`${import.meta.env.VITE_API_URL}/api/employees/settings/${user.id}`, { credentials: 'include' });
-            if (res.ok) {
-                const settings = await res.json();
-                setEmployeeSettings(settings);
-            } else {
-                setEmployeeSettings({});
-            }
+            // Note: Use centralized API. Logic for settings fetching remains same.
+            const res = await api.get(`/employees/settings/${user.id}`);
+            setEmployeeSettings(res.data || {});
         } catch (e) {
             console.error(e);
             setEmployeeSettings({});
@@ -146,20 +120,14 @@ export const UserList: React.FC = () => {
         setIsSaving(true);
         try {
             // Update User Info (Role, Screens, Department)
-            await fetch(`${import.meta.env.VITE_API_URL}/api/employees/${editingUser.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ role, allowedScreens: screens, departmentId }), // Note: Backend update might need to support departmentId
-                credentials: 'include'
+            await api.patch(`/employees/${editingUser.id}`, {
+                role,
+                allowedScreens: screens,
+                departmentId
             });
 
             // Update Employee Settings
-            await fetch(`${import.meta.env.VITE_API_URL}/api/employees/settings/${editingUser.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(employeeSettings),
-                credentials: 'include'
-            });
+            await api.patch(`/employees/settings/${editingUser.id}`, employeeSettings);
 
             setEditingUser(null);
             fetchUsers();

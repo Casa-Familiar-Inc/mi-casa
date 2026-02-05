@@ -1,4 +1,5 @@
 import { authClient } from "../lib/auth";
+import { api } from "../lib/api";
 
 export interface AuditLogPayload {
     target_collection: string;
@@ -10,13 +11,17 @@ export interface AuditLogPayload {
     actor_name?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL;
-
 export const AuditService = {
     async log(payload: AuditLogPayload): Promise<void> {
         try {
-            const { data: session } = await authClient.getSession();
-            const user = session?.user;
+            // Get user session for actor details if not provided
+            let user;
+            if (!payload.actor_id || !payload.actor_name) {
+                try {
+                    const { data: session } = await authClient.getSession();
+                    user = session?.user;
+                } catch (e) { /* ignore auth error in audit */ }
+            }
 
             const data = {
                 target_collection: payload.target_collection,
@@ -27,14 +32,7 @@ export const AuditService = {
                 actor_name: payload.actor_name || user?.name || user?.email || 'System'
             };
 
-            await fetch(`${API_URL}/api/audit-logs`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: 'include',
-                body: JSON.stringify(data),
-            });
+            await api.post('/audit-logs', data);
 
         } catch (error) {
             console.error("Failed to create audit log:", error);

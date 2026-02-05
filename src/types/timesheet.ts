@@ -17,6 +17,7 @@ export interface HR_TimeSheetHeader {
     expand?: any;
     collectionId: string;
     collectionName: string;
+    pay_period_id?: string;
 }
 
 export interface HR_TimeSheetLog {

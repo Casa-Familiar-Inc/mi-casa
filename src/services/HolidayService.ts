@@ -1,11 +1,10 @@
-const API_BASE = `${import.meta.env.VITE_API_URL}/api`;
+import { api } from "../lib/api";
 
 export const HolidayService = {
     async getHolidays() {
         try {
-            const response = await fetch(`${API_BASE}/holidays`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/holidays');
+            return response.data;
         } catch (error) {
             console.error("Error fetching holidays:", error);
             return [];
@@ -14,9 +13,10 @@ export const HolidayService = {
 
     async getHolidaysByRange(start: string, end: string) {
         try {
-            const response = await fetch(`${API_BASE}/holidays/range?start=${start}&end=${end}`, { credentials: 'include' });
-            if (!response.ok) return [];
-            return await response.json();
+            const response = await api.get('/holidays/range', {
+                params: { start, end }
+            });
+            return response.data;
         } catch (error) {
             console.error("Error fetching holidays by range:", error);
             return [];
@@ -25,14 +25,8 @@ export const HolidayService = {
 
     async saveHoliday(holiday: any) {
         try {
-            const response = await fetch(`${API_BASE}/holidays`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                credentials: 'include',
-                body: JSON.stringify(holiday),
-            });
-            if (!response.ok) throw new Error("Failed to save holiday");
-            return await response.json();
+            const response = await api.post('/holidays', holiday);
+            return response.data;
         } catch (error) {
             console.error("Error saving holiday:", error);
             throw error;
@@ -41,12 +35,8 @@ export const HolidayService = {
 
     async deleteHoliday(id: string) {
         try {
-            const response = await fetch(`${API_BASE}/holidays/${id}`, {
-                method: "DELETE",
-                credentials: 'include',
-            });
-            if (!response.ok) throw new Error("Failed to delete holiday");
-            return await response.json();
+            const response = await api.delete(`/holidays/${id}`);
+            return response.data;
         } catch (error) {
             console.error("Error deleting holiday:", error);
             throw error;
