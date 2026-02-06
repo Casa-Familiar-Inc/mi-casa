@@ -13,15 +13,13 @@ interface DepartmentDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     department?: Department;
-    onSave: (data: { name: string; code?: string; managerId?: string; aliases?: string[] }) => Promise<void>;
+    onSave: (data: { name: string; code?: string; managerId?: string }) => Promise<void>;
 }
 
 export const DepartmentDialog: React.FC<DepartmentDialogProps> = ({ open, onOpenChange, department, onSave }) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
     const [managerId, setManagerId] = useState<string>('');
-    const [aliases, setAliases] = useState<string[]>([]);
-    const [aliasInput, setAliasInput] = useState('');
     const [users, setUsers] = useState<User[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -30,8 +28,6 @@ export const DepartmentDialog: React.FC<DepartmentDialogProps> = ({ open, onOpen
             setName(department?.name || '');
             setCode(department?.code || '');
             setManagerId(department?.managerId || '');
-            setAliases(department?.aliases || []);
-            setAliasInput('');
             fetchUsers();
         }
     }, [open, department]);
@@ -41,25 +37,11 @@ export const DepartmentDialog: React.FC<DepartmentDialogProps> = ({ open, onOpen
         setUsers(data);
     };
 
-    const handleAddAlias = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && aliasInput.trim()) {
-            e.preventDefault();
-            if (!aliases.includes(aliasInput.trim())) {
-                setAliases([...aliases, aliasInput.trim()]);
-            }
-            setAliasInput('');
-        }
-    };
-
-    const removeAlias = (alias: string) => {
-        setAliases(aliases.filter(a => a !== alias));
-    };
-
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
         try {
-            await onSave({ name, code, managerId, aliases });
+            await onSave({ name, code, managerId });
             onOpenChange(false);
         } finally {
             setIsLoading(false);
@@ -81,7 +63,7 @@ export const DepartmentDialog: React.FC<DepartmentDialogProps> = ({ open, onOpen
                         <Label htmlFor="code">Code (Optional)</Label>
                         <Input id="code" value={code} onChange={e => setCode(e.target.value)} placeholder="e.g. ENG" />
                     </div>
-                    
+
                     <div className="grid gap-2">
                         <Label>Manager (Default Supervisor)</Label>
                         <Select value={managerId} onValueChange={setManagerId}>
@@ -94,25 +76,6 @@ export const DepartmentDialog: React.FC<DepartmentDialogProps> = ({ open, onOpen
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
-
-                    <div className="grid gap-2">
-                        <Label>Aliases (Sync Matching)</Label>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                            {aliases.map(alias => (
-                                <Badge key={alias} variant="secondary" className="gap-1">
-                                    {alias}
-                                    <X className="h-3 w-3 cursor-pointer" onClick={() => removeAlias(alias)} />
-                                </Badge>
-                            ))}
-                        </div>
-                        <Input 
-                            value={aliasInput} 
-                            onChange={e => setAliasInput(e.target.value)} 
-                            onKeyDown={handleAddAlias}
-                            placeholder="Type alias and press Enter (e.g. 'Ingenieria')" 
-                        />
-                        <p className="text-[10px] text-muted-foreground">These names will automatically link users from Entra ID to this department.</p>
                     </div>
 
                     <DialogFooter>

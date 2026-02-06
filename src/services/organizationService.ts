@@ -5,7 +5,6 @@ export interface Department {
     name: string;
     code?: string;
     managerId?: string;
-    aliases?: string[];
     managerName?: string;
     managerEmail?: string;
 }
