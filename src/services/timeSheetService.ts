@@ -128,37 +128,13 @@ export const TimeSheetService = {
 
     async getSubmittedTimeSheets(statuses: string[] = ['Submitted'], page = 1, limit = 50): Promise<HR_TimeSheetHeader[]> {
         try {
-            let directReports: string[] = [];
-            try {
-                const state = useAuthStore.getState();
-                if (state.directReports && state.directReports.length > 0) {
-                    directReports = state.directReports;
-                }
-            } catch (e) { /* ignore */ }
-
-            if (directReports.length === 0) {
-                const { data: session } = await authClient.getSession();
-                directReports = (session?.user as any)?.directReports || [];
-            }
-
-            if (typeof directReports === 'string') {
-                try {
-                    directReports = JSON.parse(directReports);
-                } catch (e) {
-                    directReports = [];
-                }
-            }
-
-            if (!Array.isArray(directReports) || directReports.length === 0) return [];
-
-            // Helper to build params for arrays (axios handles arrays as name[] usually, but backend expects single keys? 
-            // Hono `c.req.queries()` handles multiple keys nicely if standard query params.
-            // Let's use URLSearchParams or simple construction for safety akin to original implementation)
+            // Note: We no longer pre-filter with directReports emails on the frontend.
+            // The backend handles scope resolution dynamically based on managerId and department.
 
             const params = new URLSearchParams();
             statuses.forEach(s => params.append('status', s));
-            directReports.forEach(e => params.append('employee_email', e));
-            params.append('_sort', '-period_start');
+
+            params.append('_sort', '-period_start'); // Note: period_start is snake_case in DB
             params.append('_page', String(page));
             params.append('_per_page', String(limit));
 

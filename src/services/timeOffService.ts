@@ -48,6 +48,8 @@ export const TimeOffService = {
 
     async getSupervisorHistory(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
         try {
+            // Note: No explicit email filtering here either.
+            // The backend's resolveUserScope handles the security and visibility.
             const response = await api.get('/time-off', {
                 params: {
                     status: ['Approved', 'Rejected'],

@@ -127,7 +127,13 @@ export const UserList: React.FC = () => {
             });
 
             // Update Employee Settings
-            await api.patch(`/employees/settings/${editingUser.id}`, employeeSettings);
+            const { default_time_in, default_lunch_out, default_lunch_in, default_time_out } = employeeSettings;
+            await api.patch(`/employees/settings/${editingUser.id}`, {
+                default_time_in,
+                default_lunch_out,
+                default_lunch_in,
+                default_time_out
+            });
 
             setEditingUser(null);
             fetchUsers();
