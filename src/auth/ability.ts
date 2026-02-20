@@ -4,34 +4,47 @@ export type Subjects =
     | "User"
     | "TimeSheets"
     | "TimeOff"
+    | "Expenses"
     | "employees"
     | "Supervisor"
     | "TimeOffApprovals"
     | "it-category"
     | "CompanyCalendar"
+    | "holidays"
+    | "organization"
     | "departments"
+    | "Accounting"
+    | "dashboard"
     | "all";
 
 
 export type Actions = "manage" | "create" | "read" | "update" | "delete" | "list" | "show" | "edit";
 
-// Extend actions to include Refine specifics if needed ('list', 'show', 'edit', 'create', 'delete')
-// Refine maps: list->read, show->read, create->create, edit->update, delete->delete normally.
-// But we can keep it simple.
-
-export type AppAbility = MongoAbility;
+export type AppAbility = MongoAbility<[Actions, Subjects | Record<string, any>]>;
 export const createAppAbility = createMongoAbility as CreateAbility<AppAbility>;
 
 // Helper to detect subject type (crucial for Refine objects vs strings)
 export const detectSubjectType = (subject: any) => {
     if (typeof subject === "string") return subject;
     if (subject && typeof subject === "object") {
+        // CASL v6+ often uses __caslSubjectType__ for objects created via subject()
+        if (subject.__caslSubjectType__) return subject.__caslSubjectType__;
+
+        // CASL uses a symbol to store the subject name
+        const typeSymbol = Symbol.for('type');
+        if (subject[typeSymbol]) return subject[typeSymbol];
+
         if (subject.resource) return subject.resource; // Refine passes resource objects
         if (subject.name) return subject.name;         // Menu items
         if (subject.__type) return subject.__type;     // Custom tagging
+        // Drizzle/Class detection fallback
+        if (subject.constructor && subject.constructor.name !== "Object") return subject.constructor.name;
     }
     return "all";
 };
+
+import { subject as caslSubject } from "@casl/ability";
+export const subject = (name: Subjects, object: any) => caslSubject(name, object);
 
 export interface UserPayload {
     id: string;
@@ -105,10 +118,10 @@ export function defineAbilityFor(user: UserPayload) {
     // We only call cannot/can with conditions here.
 
     // TimeSheets: Ownership update
-    can("update", "TimeSheets", { userId: user.id });
+    can("update", "TimeSheets", { user_id: user.id, status: "Draft" });
 
     // TimeOff: Ownership rules
-    can(["update", "delete", "read"], "TimeOff", { userId: user.id });
+    can(["update", "delete", "read"], "TimeOff", { user_id: user.id });
 
     // HR Role Specials (Global overrides)
     if (role === 'hr') {

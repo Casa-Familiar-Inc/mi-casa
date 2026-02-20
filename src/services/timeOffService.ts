@@ -46,15 +46,14 @@ export const TimeOffService = {
         return requestId!;
     },
 
-    async getSupervisorHistory(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
+    async getSupervisorHistory(page = 1, limit = 50, scope = 'supervised'): Promise<HR_TimeOffRequest[]> {
         try {
-            // Note: No explicit email filtering here either.
-            // The backend's resolveUserScope handles the security and visibility.
             const response = await api.get('/time-off', {
                 params: {
                     status: ['Approved', 'Rejected'],
                     _page: page,
-                    _per_page: limit
+                    _per_page: limit,
+                    scope // Pass scope to backend
                 }
             });
             return response.data;
@@ -89,12 +88,13 @@ export const TimeOffService = {
         }
     },
 
-    async getPendingRequests(page = 1, limit = 50): Promise<HR_TimeOffRequest[]> {
+    async getPendingRequests(page = 1, limit = 50, scope = 'supervised'): Promise<HR_TimeOffRequest[]> {
         try {
             const response = await api.get('/time-off/pending', {
                 params: {
                     _page: page,
-                    _per_page: limit
+                    _per_page: limit,
+                    scope // Pass scope to backend
                 }
             });
             return response.data;

@@ -69,20 +69,20 @@ export const SupervisorDashboard: React.FC = () => {
         setIsLoading(true);
         try {
             // 1. Fetch Pending (Timesheets & Time Off)
-            const pTs = await TimeSheetService.getSubmittedTimeSheets(['Submitted'], pendingPage, LIMIT);
+            const pTs = await TimeSheetService.getSubmittedTimeSheets(['Submitted'], pendingPage, LIMIT, 'supervised');
             // Filter self out if needed (backend might return self if supervisor is also reporting to self? Unlikely)
             const filteredPTs = pTs.filter(d => d.user_id !== identity?.id);
             setTsPending(filteredPTs);
 
-            const pTo = await TimeOffService.getPendingRequests(pendingPage, LIMIT);
+            const pTo = await TimeOffService.getPendingRequests(pendingPage, LIMIT, 'supervised');
             setToPending(pTo);
 
             // 2. Fetch History (Timesheets & Time Off)
-            const hTs = await TimeSheetService.getSubmittedTimeSheets(['Approved', 'Rejected'], historyPage, LIMIT);
+            const hTs = await TimeSheetService.getSubmittedTimeSheets(['Approved', 'Rejected'], historyPage, LIMIT, 'supervised');
             const filteredHTs = hTs.filter(d => d.user_id !== identity?.id);
             setTsHistory(filteredHTs);
 
-            const hTo = await TimeOffService.getSupervisorHistory(historyPage, LIMIT);
+            const hTo = await TimeOffService.getSupervisorHistory(historyPage, LIMIT, 'supervised');
             setToHistory(hTo);
 
         } catch (e) {

@@ -39,7 +39,7 @@ import { useMemo } from "react";
 import { combinedAuthProvider } from "./combinedAuthProvider";
 import { useAuthStore } from "./stores/authStore";
 import axios from "axios";
-import { defineAbilityFor } from "./auth/ability";
+import { defineAbilityFor, subject as caslSubjectWrap, Subjects } from "./auth/ability";
 
 import { useSessionSync } from "./hooks/useSessionSync";
 import { resources } from "./config/resources";
@@ -50,6 +50,9 @@ const axiosInstance = axios.create();
 axiosInstance.defaults.withCredentials = true;
 
 function App() {
+  console.log("[App] Configured API_URL:", API_URL);
+  console.log("[App] VITE_API_URL:", import.meta.env.VITE_API_URL);
+
   // Use the custom hook for session synchronization
   useSessionSync();
 
@@ -82,15 +85,17 @@ function App() {
                 can: async ({ resource, action, params }) => {
                   const act = action || 'list';
 
-                  // For menu and basic list checks, use the resource string directly.
-                  // Only use the object (params.resource) if we are doing instance-level ABAC.
-                  const subject = (act === 'read' || act === 'list' || !params?.resource)
-                    ? (resource || 'all')
-                    : params.resource;
+                  let subjectObj: any;
+                  if (!params?.resource) {
+                    subjectObj = resource || 'all';
+                  } else {
+                    // ABAC check: Wrap the data with its resource name for CASL
+                    subjectObj = caslSubjectWrap(resource as Subjects, params.resource);
+                  }
 
-                  const can = ability.can(act, subject);
+                  const can = ability.can(act as any, subjectObj);
 
-                  console.log(`[ACL] Check: ${act} on ${typeof subject === 'string' ? subject : JSON.stringify(subject)} -> Result: ${can}`);
+                  console.log(`[ACL] Check: ${act} on ${typeof subjectObj === 'string' ? subjectObj : (resource || 'unknown')} -> Result: ${can}`);
 
                   return {
                     can,

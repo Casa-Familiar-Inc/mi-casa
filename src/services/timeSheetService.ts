@@ -126,13 +126,14 @@ export const TimeSheetService = {
         }
     },
 
-    async getSubmittedTimeSheets(statuses: string[] = ['Submitted'], page = 1, limit = 50): Promise<HR_TimeSheetHeader[]> {
+    async getSubmittedTimeSheets(statuses: string[] = ['Submitted'], page = 1, limit = 50, scope?: 'supervised'): Promise<HR_TimeSheetHeader[]> {
         try {
             // Note: We no longer pre-filter with directReports emails on the frontend.
             // The backend handles scope resolution dynamically based on managerId and department.
 
             const params = new URLSearchParams();
             statuses.forEach(s => params.append('status', s));
+            if (scope) params.append('scope', scope);
 
             params.append('_sort', '-period_start'); // Note: period_start is snake_case in DB
             params.append('_page', String(page));

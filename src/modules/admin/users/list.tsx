@@ -23,6 +23,8 @@ import {
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { UserHierarchy } from './HierarchyView';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 // Define Screens we can assign
 // Define Screens we can assign (Fallback/Initial)
@@ -71,6 +73,7 @@ export const UserList: React.FC = () => {
     const [editingUser, setEditingUser] = React.useState<any>(null);
     const [role, setRole] = React.useState('user');
     const [departmentId, setDepartmentId] = React.useState<string>("");
+    const [managerId, setManagerId] = React.useState<string>("none"); // Decoupled Manager
     const [screens, setScreens] = React.useState<string[]>([]);
     const [employeeSettings, setEmployeeSettings] = React.useState<any>({});
     const [isSaving, setIsSaving] = React.useState(false);
@@ -100,6 +103,7 @@ export const UserList: React.FC = () => {
         setEditingUser(user);
         setRole(user.role || 'user');
         setDepartmentId(user.departmentId || "");
+        setManagerId(user.managerId || "none"); // Initialize to current manager or None. User can select "Default" to reset.
         try {
             setScreens(user.allowedScreens ? JSON.parse(user.allowedScreens) : []);
         } catch (e) { setScreens([]); }
@@ -119,11 +123,12 @@ export const UserList: React.FC = () => {
         if (!editingUser) return;
         setIsSaving(true);
         try {
-            // Update User Info (Role, Screens, Department)
+            // Update User Info (Role, Screens, Department, Manager)
             await api.patch(`/employees/${editingUser.id}`, {
                 role,
                 allowedScreens: screens,
-                departmentId
+                departmentId,
+                managerId // Send the decoupled manager ID
             });
 
             // Update Employee Settings
@@ -186,6 +191,7 @@ export const UserList: React.FC = () => {
                                     <TableHead>Name</TableHead>
                                     <TableHead>Email</TableHead>
                                     <TableHead>Role</TableHead>
+                                    <TableHead>Department</TableHead>
                                     <TableHead>Allowed Screens</TableHead>
                                     <TableHead>Phone</TableHead>
                                     <TableHead>Office</TableHead>
@@ -195,12 +201,24 @@ export const UserList: React.FC = () => {
                             <TableBody>
                                 {users.map((user: any) => (
                                     <TableRow key={user.id}>
-                                        <TableCell>{user.name}</TableCell>
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-2">
+                                                {user.name}
+                                                {(user.id === user.departmentManagerId || user.isSupervisor) && (
+                                                    <Badge variant="outline" className="text-[10px] h-4 px-1 border-blue-200 text-blue-700 bg-blue-50">
+                                                        Manager
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>
                                             <Badge variant={user.role === 'admin' ? 'destructive' : 'secondary'}>
                                                 {roleLabels[user.role] || user.role}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <span className="text-sm">{user.departmentName || '-'}</span>
                                         </TableCell>
                                         <TableCell className="max-w-xs truncate">
                                             {user.allowedScreens ? JSON.parse(user.allowedScreens).join(', ') : '-'}
@@ -230,25 +248,53 @@ export const UserList: React.FC = () => {
                                                                     </SelectTrigger>
                                                                     <SelectContent>
                                                                         <SelectItem value="user">User (Employee)</SelectItem>
-                                                                        <SelectItem value="hr">Supervisor</SelectItem>
+                                                                        <SelectItem value="supervisor">Supervisor</SelectItem>
+                                                                        <SelectItem value="hr">HR</SelectItem>
                                                                         <SelectItem value="admin">Admin</SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
                                                             </div>
 
-                                                            <div className="grid grid-cols-4 items-center gap-4">
-                                                                <Label className="text-right">Department</Label>
-                                                                <Select value={departmentId} onValueChange={setDepartmentId}>
-                                                                    <SelectTrigger className="col-span-3">
-                                                                        <SelectValue placeholder="Select Department" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        <SelectItem value="none">_No Department_</SelectItem>
-                                                                        {departments.map((d) => (
-                                                                            <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
+                                                            <div className="grid grid-cols-4 items-start gap-4">
+                                                                <Label className="text-right mt-2">Department</Label>
+                                                                <div className="col-span-3 space-y-1">
+                                                                    <Select value={departmentId} onValueChange={(val) => {
+                                                                        setDepartmentId(val);
+                                                                        setManagerId("default");
+                                                                    }}>
+                                                                        <SelectTrigger>
+                                                                            <SelectValue placeholder="Select Department" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="none">_No Department_</SelectItem>
+                                                                            {departments.map((d) => (
+                                                                                <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-4 items-start gap-4">
+                                                                <Label className="text-right mt-2">Manager</Label>
+                                                                <div className="col-span-3 space-y-1">
+                                                                    <Select value={managerId} onValueChange={setManagerId}>
+                                                                        <SelectTrigger>
+                                                                            <SelectValue placeholder="Select Manager (Optional)" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="none">_Default (Department Head)_</SelectItem>
+                                                                            {users
+                                                                                .filter(u => u.id !== editingUser?.id) // Prevent self-reporting
+                                                                                .map((u) => (
+                                                                                    <SelectItem key={u.id} value={u.id}>{u.name} {u.departmentName ? `(${u.departmentName})` : ''}</SelectItem>
+                                                                                ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <p className="text-[10px] text-muted-foreground italic">
+                                                                        * Si se selecciona "Default", se usará el jefe del departamento seleccionado.
+                                                                    </p>
+                                                                </div>
                                                             </div>
 
                                                             <div className="space-y-4">
