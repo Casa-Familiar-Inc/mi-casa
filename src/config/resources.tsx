@@ -54,6 +54,14 @@ export const resources = [
         }
     },
     {
+        name: "roles",
+        list: "/admin/roles",
+        meta: {
+            label: "Roles & Permissions",
+            icon: <ShieldAlert className="h-4 w-4" />
+        }
+    },
+    {
         name: "HR",
         meta: {
             label: "HR",

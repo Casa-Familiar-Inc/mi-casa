@@ -26,23 +26,12 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { UserHierarchy } from './HierarchyView';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-// Define Screens we can assign
-// Define Screens we can assign (Fallback/Initial)
-const AVAILABLE_SCREENS = [
-    { id: 'TimeSheets', label: 'TimeSheets' },
-    { id: 'TimeOff', label: 'Time Off' },
-    { id: 'Supervisor', label: 'Supervisor Dashboard' },
-    { id: 'employees', label: 'User Management' },
-    { id: 'departments', label: 'Departments' },
-    { id: 'it-category', label: 'IT Settings' },
-    { id: 'HRAudit', label: 'HR Audit & Reports' }
-];
+// No more AVAILABLE_SCREENS needed 
 
 export const UserList: React.FC = () => {
     const { mutate: logout } = useLogout();
     const [users, setUsers] = React.useState<any[]>([]);
     const [departments, setDepartments] = React.useState<any[]>([]);
-    const [availableScreens, setAvailableScreens] = React.useState<{ id: string, label: string }[]>(AVAILABLE_SCREENS);
     const [isLoading, setIsLoading] = React.useState(true);
 
     const fetchUsers = async () => {
@@ -54,10 +43,6 @@ export const UserList: React.FC = () => {
             // Fetch Departments
             const resDepts = await api.get('/organization/departments');
             setDepartments(resDepts.data);
-
-            // Fetch Screens
-            const resScreens = await api.get('/employees/screens');
-            setAvailableScreens(resScreens.data);
 
         } catch (e) {
             console.error("Error fetching users", e);
@@ -74,7 +59,7 @@ export const UserList: React.FC = () => {
     const [role, setRole] = React.useState('user');
     const [departmentId, setDepartmentId] = React.useState<string>("");
     const [managerId, setManagerId] = React.useState<string>("none"); // Decoupled Manager
-    const [screens, setScreens] = React.useState<string[]>([]);
+    const [isSupervisor, setIsSupervisor] = React.useState(false);
     const [employeeSettings, setEmployeeSettings] = React.useState<any>({});
     const [isSaving, setIsSaving] = React.useState(false);
     const [isSyncing, setIsSyncing] = React.useState(false);
@@ -98,15 +83,12 @@ export const UserList: React.FC = () => {
             setIsSyncing(false);
         }
     };
-
     const handleEditClick = async (user: any) => {
         setEditingUser(user);
         setRole(user.role || 'user');
         setDepartmentId(user.departmentId || "");
         setManagerId(user.managerId || "none"); // Initialize to current manager or None. User can select "Default" to reset.
-        try {
-            setScreens(user.allowedScreens ? JSON.parse(user.allowedScreens) : []);
-        } catch (e) { setScreens([]); }
+        setIsSupervisor(!!user.isSupervisor);
 
         // Fetch Employee Settings
         try {
@@ -123,10 +105,9 @@ export const UserList: React.FC = () => {
         if (!editingUser) return;
         setIsSaving(true);
         try {
-            // Update User Info (Role, Screens, Department, Manager)
             await api.patch(`/employees/${editingUser.id}`, {
                 role,
-                allowedScreens: screens,
+                isSupervisor,
                 departmentId,
                 managerId // Send the decoupled manager ID
             });
@@ -151,18 +132,9 @@ export const UserList: React.FC = () => {
         }
     };
 
-    const toggleScreen = (id: string, checked: boolean) => {
-        setScreens(prev =>
-            checked
-                ? [...prev, id]
-                : prev.filter(s => s !== id)
-        );
-    };
-
     const roleLabels: Record<string, string> = {
         admin: 'Admin',
-        hr: 'Supervisor',
-        user: 'Employee'
+        user: 'User'
     };
 
     if (isLoading) return <div>Loading users...</div>;
@@ -192,7 +164,6 @@ export const UserList: React.FC = () => {
                                     <TableHead>Email</TableHead>
                                     <TableHead>Role</TableHead>
                                     <TableHead>Department</TableHead>
-                                    <TableHead>Allowed Screens</TableHead>
                                     <TableHead>Phone</TableHead>
                                     <TableHead>Office</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
@@ -220,9 +191,6 @@ export const UserList: React.FC = () => {
                                         <TableCell>
                                             <span className="text-sm">{user.departmentName || '-'}</span>
                                         </TableCell>
-                                        <TableCell className="max-w-xs truncate">
-                                            {user.allowedScreens ? JSON.parse(user.allowedScreens).join(', ') : '-'}
-                                        </TableCell>
                                         <TableCell>{user.phoneNumber || '-'}</TableCell>
                                         <TableCell>{user.officeLocation || '-'}</TableCell>
                                         <TableCell className="text-right">
@@ -247,9 +215,7 @@ export const UserList: React.FC = () => {
                                                                         <SelectValue placeholder="Select role" />
                                                                     </SelectTrigger>
                                                                     <SelectContent>
-                                                                        <SelectItem value="user">User (Employee)</SelectItem>
-                                                                        <SelectItem value="supervisor">Supervisor</SelectItem>
-                                                                        <SelectItem value="hr">HR</SelectItem>
+                                                                        <SelectItem value="user">User</SelectItem>
                                                                         <SelectItem value="admin">Admin</SelectItem>
                                                                     </SelectContent>
                                                                 </Select>
@@ -297,74 +263,17 @@ export const UserList: React.FC = () => {
                                                                 </div>
                                                             </div>
 
-                                                            <div className="space-y-4">
-                                                                <div className="flex items-center justify-between">
-                                                                    <Label>Permissions (Resource:Action)</Label>
-                                                                    <Badge variant="outline" className="text-[10px]">Matrix Mode</Badge>
-                                                                </div>
-                                                                <div className="border rounded-md overflow-hidden">
-                                                                    <Table>
-                                                                        <TableHeader className="bg-muted/50">
-                                                                            <TableRow className="hover:bg-transparent">
-                                                                                <TableHead className="w-[150px] py-2 text-xs">Module</TableHead>
-                                                                                <TableHead className="text-center py-2 text-xs">Read/List</TableHead>
-                                                                                <TableHead className="text-center py-2 text-xs">Write</TableHead>
-                                                                                <TableHead className="text-center py-2 text-xs">Del</TableHead>
-                                                                                <TableHead className="text-center py-2 text-xs">Full</TableHead>
-                                                                            </TableRow>
-                                                                        </TableHeader>
-                                                                        <TableBody>
-                                                                            {availableScreens.map(sc => {
-                                                                                const hasRead = screens.includes(`${sc.id}:read`) || screens.includes(sc.id);
-                                                                                const hasCreate = screens.includes(`${sc.id}:create`) || screens.includes(sc.id);
-                                                                                const hasUpdate = screens.includes(`${sc.id}:update`) || screens.includes(sc.id);
-                                                                                const hasDelete = screens.includes(`${sc.id}:delete`) || screens.includes(sc.id);
-                                                                                const hasManage = screens.includes(sc.id) || screens.includes(`${sc.id}:manage`);
-
-                                                                                const toggle = (action: string, checked: boolean) => {
-                                                                                    const perm = action === 'manage' ? sc.id : `${sc.id}:${action}`;
-                                                                                    setScreens(prev =>
-                                                                                        checked
-                                                                                            ? [...new Set([...prev, perm])]
-                                                                                            : prev.filter(p => p !== perm && p !== sc.id) // Unchecking granular removes global too
-                                                                                    );
-                                                                                };
-
-                                                                                return (
-                                                                                    <TableRow key={sc.id} className="h-10">
-                                                                                        <TableCell className="font-medium text-xs py-1">{sc.label}</TableCell>
-                                                                                        <TableCell className="text-center py-1">
-                                                                                            <Checkbox
-                                                                                                checked={hasRead}
-                                                                                                onCheckedChange={(c) => toggle('read', !!c)}
-                                                                                            />
-                                                                                        </TableCell>
-                                                                                        <TableCell className="text-center py-1">
-                                                                                            <Checkbox
-                                                                                                checked={hasUpdate || hasCreate}
-                                                                                                onCheckedChange={(c) => {
-                                                                                                    toggle('update', !!c);
-                                                                                                    toggle('create', !!c);
-                                                                                                }}
-                                                                                            />
-                                                                                        </TableCell>
-                                                                                        <TableCell className="text-center py-1">
-                                                                                            <Checkbox
-                                                                                                checked={hasDelete}
-                                                                                                onCheckedChange={(c) => toggle('delete', !!c)}
-                                                                                            />
-                                                                                        </TableCell>
-                                                                                        <TableCell className="text-center py-1">
-                                                                                            <Checkbox
-                                                                                                checked={hasManage}
-                                                                                                onCheckedChange={(c) => toggle('manage', !!c)}
-                                                                                            />
-                                                                                        </TableCell>
-                                                                                    </TableRow>
-                                                                                );
-                                                                            })}
-                                                                        </TableBody>
-                                                                    </Table>
+                                                            <div className="grid grid-cols-4 items-start gap-4">
+                                                                <Label className="text-right mt-2">Supervisor</Label>
+                                                                <div className="col-span-3 space-y-1 flex items-center h-9">
+                                                                    <Checkbox
+                                                                        id="isSupervisorToggle"
+                                                                        checked={isSupervisor}
+                                                                        onCheckedChange={(c) => setIsSupervisor(!!c)}
+                                                                    />
+                                                                    <label htmlFor="isSupervisorToggle" className="ml-2 text-sm text-foreground">
+                                                                        Enable Supervisor Access
+                                                                    </label>
                                                                 </div>
                                                             </div>
                                                         </div>

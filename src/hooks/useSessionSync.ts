@@ -29,30 +29,12 @@ export const useSessionSync = () => {
             const isSup = !!user.isSupervisor || hasReports;
             const role = user.role || 'user';
 
-            // Robust screens extraction (handling both snake_case and camelCase)
-            const rawScreens = user.allowedScreens || user.allowed_screens;
-            let screens: string[] = [];
-
-            if (rawScreens) {
-                if (Array.isArray(rawScreens)) {
-                    screens = rawScreens;
-                } else if (typeof rawScreens === 'string') {
-                    try {
-                        screens = JSON.parse(rawScreens);
-                    } catch (e) {
-                        console.error("[useSessionSync] Failed to parse screens string:", e);
-                        screens = [];
-                    }
-                }
-            }
-
             // Update Store (Auto-persists)
             setAuthData({
                 isSupervisor: isSup,
                 directReports: reports,
                 userRole: role,
-                userId: user.id || null,
-                allowedScreens: screens
+                userId: user.id || null
             });
 
         } else {

@@ -12,8 +12,22 @@ import {
   useActiveAuthProvider,
   useLogout,
   useRefineOptions,
+  useCustomMutation,
 } from "@refinedev/core";
-import { LogOutIcon } from "lucide-react";
+import { LogOutIcon, KeyIcon } from "lucide-react";
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 
 export const Header = () => {
   const { isMobile } = useSidebar();
@@ -42,15 +56,15 @@ function DesktopHeader() {
       )}
     >
       <ThemeToggle />
-      
+
       {/* Brand Strip */}
       <div className="absolute bottom-0 left-0 w-full">
-         <div className="flex w-full h-[3px]">
-            <div className="flex-1 bg-[#224193]"></div>
-            <div className="flex-1 bg-[#E21B29]"></div>
-            <div className="flex-1 bg-[#22AB6E]"></div>
-            <div className="flex-1 bg-[#ECBD43]"></div>
-         </div>
+        <div className="flex w-full h-[3px]">
+          <div className="flex-1 bg-[#224193]"></div>
+          <div className="flex-1 bg-[#E21B29]"></div>
+          <div className="flex-1 bg-[#22AB6E]"></div>
+          <div className="flex-1 bg-[#ECBD43]"></div>
+        </div>
       </div>
     </header>
   );
@@ -127,9 +141,86 @@ function MobileHeader() {
   );
 }
 
+const ChangePasswordDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const { mutate, isPending } = useCustomMutation();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+
+    mutate(
+      {
+        url: `${import.meta.env.VITE_API_URL}/api/user/set-password`,
+        method: "post",
+        values: { password: newPassword },
+      },
+      {
+        onSuccess: () => {
+          toast.success("Password updated successfully");
+          onOpenChange(false);
+          setNewPassword("");
+          setConfirmPassword("");
+        },
+        onError: (error: any) => {
+          toast.error(error?.response?.data?.message || "Failed to update password");
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Change Password</DialogTitle>
+          <DialogDescription>
+            Set a new password to use for email login. Your session must be active.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="grid py-4 gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="new-password">New Password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="confirm-password">Confirm Password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Saving..." : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const UserDropdown = () => {
   const { mutate: logout, isPending: isLoggingOut } = useLogout();
-
+  const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
   const authProvider = useActiveAuthProvider();
 
   if (!authProvider?.getIdentity) {
@@ -137,25 +228,33 @@ const UserDropdown = () => {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger>
-        <UserAvatar />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem
-          onClick={() => {
-            logout();
-          }}
-        >
-          <LogOutIcon
-            className={cn("text-destructive", "hover:text-destructive")}
-          />
-          <span className={cn("text-destructive", "hover:text-destructive")}>
-            {isLoggingOut ? "Logging out..." : "Logout"}
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <UserAvatar />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setPasswordModalOpen(true)}>
+            <KeyIcon className="mr-2 h-4 w-4" />
+            <span>Change Password</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              logout();
+            }}
+          >
+            <LogOutIcon
+              className={cn("mr-2 h-4 w-4 text-destructive", "hover:text-destructive")}
+            />
+            <span className={cn("text-destructive", "hover:text-destructive")}>
+              {isLoggingOut ? "Logging out..." : "Logout"}
+            </span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ChangePasswordDialog open={isPasswordModalOpen} onOpenChange={setPasswordModalOpen} />
+    </>
   );
 };
 

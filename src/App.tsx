@@ -24,6 +24,8 @@ import { ITCategoryShow } from "./modules/it/categories/show";
 import { ITManufacturerList } from "./modules/it/manufacturers/list";
 import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/login";
+import { Register } from "./pages/register";
+import { ForgotPassword } from "./pages/forgot-password";
 import { TimeSheetPage } from "./modules/hr/timesheets/my-timesheet/page";
 import { TimeSheetList } from "./modules/hr/timesheets/my-timesheet/list";
 import { TimeOffPage } from "./modules/hr/time-off/page";
@@ -31,6 +33,7 @@ import { TimeOffList } from "./modules/hr/time-off/list";
 import { SupervisorDashboard } from "./modules/hr/timesheets/supervisor-dashboard/page";
 import { UserList } from "./modules/admin/users/list";
 import { HolidayList } from "./modules/hr/holidays/list";
+import { RolesList } from "./modules/admin/roles/list";
 
 import { DepartmentsList } from "./modules/admin/departments";
 import { HRAuditDashboard } from "./modules/hr/audit/HRAuditDashboard";
@@ -56,7 +59,7 @@ function App() {
   // Use the custom hook for session synchronization
   useSessionSync();
 
-  const { isSupervisor, allowedScreens, userRole, directReports, userId } = useAuthStore();
+  const { isSupervisor, userRole, directReports, userId } = useAuthStore();
 
   // Memoize the ability for performance (Best Practice)
   const ability = useMemo(() => {
@@ -64,10 +67,9 @@ function App() {
       id: userId || 'unknown',
       role: userRole || 'user',
       isSupervisor: isSupervisor,
-      allowedScreens: allowedScreens,
       directReports: directReports
     });
-  }, [userId, userRole, isSupervisor, allowedScreens, directReports]);
+  }, [userId, userRole, isSupervisor, directReports]);
 
   return (
     <BrowserRouter>
@@ -156,6 +158,7 @@ function App() {
                   <Route path="/supervisor" element={<SupervisorDashboard />} />
                   <Route path="/admin/users" element={<UserList />} />
                   <Route path="/admin/departments" element={<DepartmentsList />} />
+                  <Route path="/admin/roles" element={<RolesList />} />
                 </Route>
                 <Route
                   element={
@@ -168,6 +171,8 @@ function App() {
                   }
                 >
                   <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
                 </Route>
               </Routes>
 

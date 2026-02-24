@@ -2,8 +2,32 @@ import { AuthProvider } from "@refinedev/core";
 import { signIn, signOut, authClient } from "./lib/auth";
 
 export const microsoftAuthProvider: AuthProvider = {
-    login: async () => {
+    login: async (params) => {
         try {
+            // Check if it's an email/password login
+            if (params?.email && params?.password) {
+                const { error } = await signIn.email({
+                    email: params.email,
+                    password: params.password,
+                });
+
+                if (error) {
+                    return {
+                        success: false,
+                        error: {
+                            name: "LoginError",
+                            message: error.message || "Invalid credentials",
+                        },
+                    };
+                }
+
+                return {
+                    success: true,
+                    redirectTo: "/",
+                };
+            }
+
+            // Fallback to Microsoft Social Login
             const { error } = await signIn.social({
                 provider: "microsoft",
                 callbackURL: window.location.origin,

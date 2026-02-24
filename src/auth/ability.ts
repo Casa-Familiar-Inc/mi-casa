@@ -50,11 +50,11 @@ export interface UserPayload {
     id: string;
     role?: string | null;
     isSupervisor: boolean;
-    allowedScreens: string[];
     directReports?: string[] | string | null;
 }
 
 export function defineAbilityFor(user: UserPayload) {
+    debugger;
     const resolveAction = createAliasResolver({
         list: 'read',
         show: 'read',
@@ -69,37 +69,6 @@ export function defineAbilityFor(user: UserPayload) {
         resolveAction
     };
     const role = user.role || 'user';
-    const screens = user.allowedScreens || [];
-
-    // --- GRANULAR PERMISSIONS PARSING ---
-    screens.forEach(screenPerm => {
-        if (screenPerm.includes(':')) {
-            const [subject, action] = screenPerm.split(':').map(s => s.trim());
-            if (action === 'read') {
-                // @ts-ignore
-                can('list', subject);
-                // @ts-ignore
-                can('show', subject);
-                // @ts-ignore
-                can('read', subject);
-            } else if (action === 'update') {
-                // @ts-ignore
-                can('edit', subject);
-                // @ts-ignore
-                can('update', subject);
-            } else {
-                // @ts-ignore
-                can(action, subject);
-            }
-        } else {
-            // Legacy / Full access for that specific screen
-            // @ts-ignore
-            can("manage", screenPerm.trim());
-        }
-    });
-
-    // --- DEBUG ---
-    console.log("[Ability] Parsed Screens:", screens);
 
     // --- ADMIN ---
     if (role === 'admin') {

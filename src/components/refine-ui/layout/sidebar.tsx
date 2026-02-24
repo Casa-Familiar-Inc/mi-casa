@@ -71,7 +71,7 @@ const GROUP_CONFIG = [
 
 export function Sidebar() {
     const { menuItems, selectedKey } = useMenu();
-    const { allowedScreens, userRole } = useAuthStore();
+    const { userRole, isSupervisor } = useAuthStore();
 
     // --- RECURSIVE FLATTENING ---
     const flattenMenuItems = (items: TreeMenuItem[]): TreeMenuItem[] => {
@@ -90,11 +90,15 @@ export function Sidebar() {
     // This is synchronous and mirrors the CASL logic for Sidebar headers
     const isResourceAuthorized = (resourceName: string) => {
         if (userRole === 'admin') return true;
-        if (userRole === 'hr' && ["TimeOff", "TimeSheets", "employees"].includes(resourceName)) return true;
         if (resourceName === 'dashboard') return true;
 
-        // Check granular matrix
-        return allowedScreens.some(s => s === resourceName || s.startsWith(`${resourceName}:`));
+        // Standard User Modules
+        if (["TimeSheets", "TimeOff", "Expenses", "holidays", "organization", "departments", "employees"].includes(resourceName)) return true;
+
+        // Supervisor specific
+        if (resourceName === 'Supervisor' && isSupervisor) return true;
+
+        return false;
     };
 
     // Helper to get items for our custom sections
